@@ -1,7 +1,8 @@
 /**
  * Secure role provisioning. Roles can only be set here (server-side, with
  * database credentials) — never through signup or a public request.
- * The person must sign up and verify their email first.
+ * The person must sign up first, and verify their email unless
+ * REQUIRE_EMAIL_VERIFICATION=false (same switch the app uses).
  *   npm run admin:grant -- --email organiser@example.com --role admin
  *   npm run admin:grant -- --email volunteer@example.com --role staff
  *   npm run admin:grant -- --email someone@example.com --role user   (revoke)
@@ -35,7 +36,8 @@ if (!u) {
   await pool.end();
   process.exit(1);
 }
-if (role !== "user" && !u.emailVerified) {
+const requireVerified = process.env.REQUIRE_EMAIL_VERIFICATION !== "false";
+if (role !== "user" && requireVerified && !u.emailVerified) {
   console.error(`${email} hasn't verified their email yet. Ask them to verify before granting ${role}.`);
   await pool.end();
   process.exit(1);
@@ -57,4 +59,7 @@ await db.transaction(async (tx) => {
   });
 });
 console.log(`${email}: role ${u.role} → ${role}. Existing sessions were signed out.`);
+if (role !== "user" && !u.emailVerified) {
+  console.warn("Note: this email is unverified (REQUIRE_EMAIL_VERIFICATION=false). Only grant roles to people you know.");
+}
 await pool.end();
