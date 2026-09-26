@@ -32,10 +32,21 @@ Import the repo (framework: Next.js; Node 22+). Set environment variables for
 
 Generate secrets with `openssl rand -base64 32`.
 
+### Platform limits to know
+
+- **Plan:** Vercel's Hobby plan is for personal, non-commercial use; selling
+  tickets is commercial, so check Vercel's fair-use terms — the Pro plan may
+  be required.
+- **Request bodies are capped at 4.5 MB.** Payment screenshots are limited to
+  4 MB on the server, and the browser re-encodes anything over 3 MB before
+  uploading.
+- **Proof images live in Postgres** (≈100–400 KB each after re-encoding), so
+  a few thousand bookings fit comfortably in Neon's free storage.
+
 ## 3. Admin accounts
 
-The organiser signs up on the site and verifies their email, then someone with
-database access runs:
+The organiser signs up on the site (and verifies their email, unless
+`REQUIRE_EMAIL_VERIFICATION=false`), then someone with database access runs:
 
 ```bash
 DATABASE_URL_UNPOOLED="…" npm run admin:grant -- --email organiser@example.com --role admin

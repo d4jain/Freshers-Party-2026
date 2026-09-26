@@ -16,7 +16,35 @@ type Props = {
   upi: { upiId: string | null; payeeName: string | null; qrPath: string; payLink: string | null };
 };
 
-const MAX_BYTES = 8 * 1024 * 1024;
+/** Server limit (hosting caps request bodies at 4.5 MB). */
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+/** Anything bigger than this is re-encoded in the browser before upload. */
+const SHRINK_ABOVE_BYTES = 3 * 1024 * 1024;
+/** Largest file we'll try to shrink; the phone screenshots we expect are far smaller. */
+const MAX_PICK_BYTES = 30 * 1024 * 1024;
+
+/**
+ * Re-encodes a large screenshot as JPEG, fitting it inside 1600×3200 (the
+ * server stores the same size), so it fits the upload limit.
+ * Returns the original file if the browser can't decode it.
+ */
+async function shrinkForUpload(file: File): Promise<File> {
+  if (file.size <= SHRINK_ABOVE_BYTES) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / bitmap.width, 3200 / bitmap.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -79,8 +107,8 @@ export function PaymentPanel({ bookingId, reference, totalPaise, holdExpiresAt, 
       setFieldErrors((e) => ({ ...e, file: "Choose an image (JPG or PNG screenshot)." }));
       return;
     }
-    if (f.size > MAX_BYTES) {
-      setFieldErrors((e) => ({ ...e, file: "The screenshot must be under 8 MB." }));
+    if (f.size > MAX_PICK_BYTES) {
+      setFieldErrors((e) => ({ ...e, file: "That image is too large. Upload the screenshot itself, not a photo of it." }));
       return;
     }
     setFile(f);
@@ -101,8 +129,13 @@ export function PaymentPanel({ bookingId, reference, totalPaise, holdExpiresAt, 
     setBusy(true);
     setError(null);
     try {
+      const upload = await shrinkForUpload(file!);
+      if (upload.size > MAX_UPLOAD_BYTES) {
+        setFieldErrors({ file: "That image is too large. Upload a JPG or PNG screenshot under 4 MB." });
+        return;
+      }
       const fd = new FormData();
-      fd.set("screenshot", file!);
+      fd.set("screenshot", upload);
       fd.set("utr", cleanUtr);
       if (payerName.trim()) fd.set("payerName", payerName.trim());
       const res = await fetch(`/api/bookings/${bookingId}/proof`, { method: "POST", body: fd });
@@ -218,7 +251,7 @@ export function PaymentPanel({ bookingId, reference, totalPaise, holdExpiresAt, 
               <ImageUp className="h-8 w-8 text-gold" aria-hidden="true" />
             )}
             <span className="text-sm font-semibold text-ivory">{file ? "Change screenshot" : "Choose screenshot"}</span>
-            <span className="text-xs text-muted">JPG or PNG, up to 8 MB</span>
+            <span className="text-xs text-muted">JPG or PNG screenshot</span>
           </label>
           <input
             id={fileId}

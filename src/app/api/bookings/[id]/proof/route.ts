@@ -28,7 +28,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/bookings/[id]/p
     if (!rl.allowed) return tooManyRequests(rl.resetAt);
 
     const length = Number(req.headers.get("content-length") ?? 0);
-    if (length > MAX_PROOF_BYTES + 64_000) throw new AppError("PROOF_TOO_LARGE", "The screenshot must be under 8 MB.", 413);
+    if (length > MAX_PROOF_BYTES + 64_000) throw new AppError("PROOF_TOO_LARGE", "The screenshot must be under 4 MB.", 413);
     let form: FormData;
     try {
       form = await req.formData();
@@ -38,7 +38,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/bookings/[id]/p
     const file = form.get("screenshot");
     if (!(file instanceof File) || file.size === 0)
       throw new AppError("PROOF_MISSING", "Attach a screenshot of your payment.", 400);
-    if (file.size > MAX_PROOF_BYTES) throw new AppError("PROOF_TOO_LARGE", "The screenshot must be under 8 MB.", 413);
+    if (file.size > MAX_PROOF_BYTES) throw new AppError("PROOF_TOO_LARGE", "The screenshot must be under 4 MB.", 413);
 
     await submitPaymentProof(db, {
       userId: user.id,

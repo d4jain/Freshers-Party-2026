@@ -8,7 +8,8 @@ import { normalizeUtr } from "@/lib/payments/upi";
 import { effectiveCapacity, eventEndsAt, lockSettingsForUpdate, placesInUse } from "@/lib/settings";
 import { logBookingEvent } from "./events";
 
-export const MAX_PROOF_BYTES = 8 * 1024 * 1024;
+/** Under Vercel's 4.5 MB request-body limit; the browser shrinks larger screenshots before upload. */
+export const MAX_PROOF_BYTES = 4 * 1024 * 1024;
 const ACCEPTED_FORMATS = new Set(["jpeg", "png", "webp", "heif", "avif"]);
 
 /**
@@ -17,7 +18,7 @@ const ACCEPTED_FORMATS = new Set(["jpeg", "png", "webp", "heif", "avif"]);
  */
 export async function processProofImage(input: Buffer): Promise<{ image: Buffer; contentType: "image/jpeg" }> {
   if (input.length === 0) throw new AppError("PROOF_MISSING", "Attach a screenshot of your payment.", 400);
-  if (input.length > MAX_PROOF_BYTES) throw new AppError("PROOF_TOO_LARGE", "The screenshot must be under 8 MB.", 413);
+  if (input.length > MAX_PROOF_BYTES) throw new AppError("PROOF_TOO_LARGE", "The screenshot must be under 4 MB.", 413);
   try {
     const img = sharp(input, { failOn: "error", limitInputPixels: 50_000_000 });
     const meta = await img.metadata();

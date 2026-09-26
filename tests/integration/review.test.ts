@@ -113,7 +113,7 @@ describe("payment proof submission", () => {
       submitPaymentProof(db, { userId: user.id, bookingId, utr: nextUtr(), file: Buffer.from("<script>alert(1)</script>") }),
       "PROOF_INVALID",
     );
-    await expectAppError(processProofImage(Buffer.alloc(9 * 1024 * 1024)), "PROOF_TOO_LARGE");
+    await expectAppError(processProofImage(Buffer.alloc(5 * 1024 * 1024)), "PROOF_TOO_LARGE");
     expect((await row(bookingId)).status).toBe("pending_payment");
   });
 
