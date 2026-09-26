@@ -56,6 +56,11 @@ test.describe("demo booking journey", () => {
     await expect(page.getByText("63968583011@axl")).toBeVisible();
     await expect(page.getByText("₹6,597").first()).toBeVisible();
     await expect(page.getByText(/guest list/i)).toHaveCount(0);
+    // Above ₹2,000: the UPI scan-limit note appears in the status card and the QR panel.
+    await expect(page.getByText("PLEASE NOTE:")).toHaveCount(2);
+    await expect(page.getByText(/payments above ₹2,000 may not go through/).first()).toBeVisible();
+    if (process.env.E2E_SHOTS)
+      await page.screenshot({ path: `${process.env.E2E_SHOTS}/pay-${info.project.name}.png`, fullPage: true });
     expect(await noHorizontalOverflow(page)).toBe(true);
 
     const bookingUrl = page.url();

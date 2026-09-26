@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BookingStatusView } from "@/lib/booking/status";
 import { usePrefersReducedMotion } from "@/lib/hooks/client-state";
 import { StatusChip } from "./status-chip";
+import { UpiScanLimitNote } from "./payment-panel";
 
 /** Poll only while an organiser is reviewing the payment. */
 const WAITING = (v: BookingStatusView) => v.status === "in_review";
@@ -98,6 +99,9 @@ export function BookingLiveStatus({ initial, celebrate }: { initial: BookingStat
       </div>
       <p className="display mt-4 text-3xl text-ivory sm:text-4xl">{view.headline}</p>
       <p className="mt-2 text-mist">{view.detail}</p>
+      {(view.status === "pending_payment" || view.status === "expired") && (
+        <UpiScanLimitNote totalPaise={view.totalPaise} className="mt-4" />
+      )}
       {view.reviewNote && (
         <p className="mt-4 rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-[#ffd3cb]">
           Reason: {view.reviewNote}

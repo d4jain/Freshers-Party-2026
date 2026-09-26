@@ -46,6 +46,22 @@ async function shrinkForUpload(file: File): Promise<File> {
   }
 }
 
+/** UPI scan-to-pay limit (₹2,000), in paise. */
+const UPI_SCAN_LIMIT_PAISE = 200_000;
+
+/** Shown wherever we ask for payment when the total is above the UPI scan-to-pay limit. */
+export function UpiScanLimitNote({ totalPaise, className }: { totalPaise: number; className?: string }) {
+  if (totalPaise <= UPI_SCAN_LIMIT_PAISE) return null;
+  return (
+    <p className={`rounded-2xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm leading-relaxed text-ivory ${className ?? ""}`}>
+      <strong className="font-bold text-gold-bright">PLEASE NOTE:</strong> As per UPI guidelines, payments above{" "}
+      {formatINR(UPI_SCAN_LIMIT_PAISE)} may not go through when made by scanning a QR code. As your total is{" "}
+      {formatINR(totalPaise)}, please pay by copying the UPI ID into your UPI app, or scan the QR code displayed on another
+      device’s screen.
+    </p>
+  );
+}
+
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -210,9 +226,9 @@ export function PaymentPanel({ bookingId, reference, totalPaise, holdExpiresAt, 
                 <Smartphone className="h-4 w-4" aria-hidden="true" /> Pay {formatINR(totalPaise)} in a UPI app
               </a>
             )}
+            <UpiScanLimitNote totalPaise={totalPaise} />
             <p className="text-xs text-muted">
-              Scan with GPay, PhonePe, Paytm or any UPI app. On your phone, use the button above or save the QR and open it from
-              your UPI app. Check the payee name before paying.
+              Pay with GPay, PhonePe, Paytm or any UPI app, and check that the payee name matches before paying.
             </p>
             {!expired && holdLabel && (
               <p className="text-sm text-mist" aria-live="off">
