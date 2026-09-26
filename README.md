@@ -1,36 +1,139 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Freshers’ Party 2026
 
-## Getting Started
+Website, booking and door check-in for **Freshers’ Party 2026** — an
+unofficial, independently organised party for **first-year Bennett University
+students** on **Thursday, 1 October 2026** at **Rubarru, Advant Navis Park,
+Noida**. ₹2,199 per person (was ₹2,500), same price for everyone. Unlimited
+Food + Unlimited Drinks · Party | Dance | Games.
 
-First, run the development server:
+Students discover the party, create an account, book for themselves or a group,
+pay with Razorpay, and get one QR pass per person. Organisers get a protected
+dashboard for bookings, exceptions, coupons, referrals, settings, CSV export and
+an audit trail; door staff get a camera + manual-code check-in page.
+
+> Status: **not deployed, no real charges.** Runs locally in a clearly labelled
+> DEMO mode or against Razorpay **test** keys. See “Missing launch inputs”.
+
+---
+
+## Quick start (local)
+
+Requirements: Node 22.12+ (tested on Node 26.7), npm, Google Chrome (for the browser tests).
+No Docker or system Postgres needed — a real PostgreSQL 18 runs from the
+`embedded-postgres` dev dependency.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local          # defaults: local DB, DEMO_MODE=true, console email
+
+npm run db:local                    # terminal 1 — keeps a local Postgres running on :54329
+npm run db:migrate                  # terminal 2
+npm run db:seed -- --demo           # settings row + labelled demo coupon DEMO10 / referral DEMO-CAMPAIGN
+npm run dev                         # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Sign up at `/signup`. The verification link is printed in the dev-server
+   console (console email provider) — open it to verify.
+2. Book at `/book`. In DEMO mode a dashed “Demo checkout” dialog simulates
+   success/failure through the real confirmation service. Demo passes say
+   **DEMO** and are rejected at the door in non-demo environments.
+3. Make yourself an organiser: `npm run admin:grant -- --email you@example.com --role admin`
+   (then log in again) → `/admin`. Door staff: `--role staff` → `/staff/check-in`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+In DEMO mode an unset capacity falls back to a labelled demo capacity of 150;
+live sales stay closed until capacity and approved policies are configured.
 
-## Learn More
+> Port note for this machine: another, unrelated app is listening on
+> `127.0.0.1:3000`. If `localhost:3000` shows a different site, run
+> `npm run dev -- --port 3100` and set `APP_URL=http://localhost:3100` in `.env.local`.
 
-To learn more about Next.js, take a look at the following resources:
+## Commands
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command | What it does |
+|---|---|
+| `npm run dev` / `build` / `start` | Next.js dev server / production build / serve build |
+| `npm run lint` · `typecheck` · `format` · `format:check` | ESLint · `tsc --noEmit` · Prettier |
+| `npm test` | Unit + integration tests (Vitest) against a throwaway real Postgres |
+| `npm run test:e2e` | Playwright (system Chrome, 360 px + 1440 px) against a dev server on :3210 in DEMO mode; needs `npm run db:local` running |
+| `npm run verify` | lint + typecheck + tests + build |
+| `npm run db:local` | Local PostgreSQL 18 in `.data/postgres` |
+| `npm run db:generate` | Generate a migration after editing `src/lib/db/schema.ts` |
+| `npm run db:migrate` | Apply migrations (uses `DATABASE_URL_UNPOOLED` if set) |
+| `npm run db:seed [-- --demo]` | Create the settings row; `--demo` adds labelled fixtures (refused in production) |
+| `npm run admin:grant -- --email … --role admin\|staff\|user` | The only way to assign roles; signs the user out everywhere; audited |
+| `npm run reconcile:once` | One reconciliation pass from the CLI (same as the cron endpoint) |
+| `npm run omniroute:check` | OmniRoute local diagnostics (dev tooling only) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Configuration
 
-## Deploy on Vercel
+All variables are documented in [`.env.example`](.env.example). Event facts
+that organisers can change (start/end time, capacity, sales window, price,
+contacts, map pin, drinks details, policies, approved media, hero video) live in
+the database and are edited in **Admin → Settings**; nothing unconfirmed is
+invented — the site shows “Timing to be announced”, hides unconfigured contact
+buttons, and uses a labelled Google Maps *search* link until a pin is verified.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## How payments work
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Short version (full state tables in [`docs/PAYMENTS.md`](docs/PAYMENTS.md)):
+
+1. Server validates everything, then **atomically holds places** (and a coupon
+   use) and creates a pending booking — idempotent per checkout attempt.
+2. Server creates the Razorpay order for the stored amount (outside the DB
+   transaction) and returns only key id, order id, amount and prefill.
+3. Bottle-pop animation (~1 s, skipped for reduced motion) → Razorpay Checkout.
+4. The callback, webhook (HMAC on raw body, deduped by event id) and
+   reconciliation all feed **one** confirmation service. Only a **captured**
+   payment for the exact amount confirms a booking and issues passes — once.
+5. Late payments recheck capacity; paid-but-unconfirmable bookings go to
+   **Admin → Exceptions**, never silently dropped. Refunds are done in the
+   Razorpay Dashboard and synced by webhook (passes void).
+
+Razorpay test setup, webhooks, scheduler, email and the **test → live**
+checklist: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+Architecture and security model: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Tests
+
+| Suite | What it covers | Kind |
+|---|---|---|
+| `tests/unit` (29) | Pricing & coupons (paise, caps, expiry, min rules, no zero totals), validation (phone, email, quantities, acknowledgements, tampered fields ignored, referral vs coupon), signatures, QR tokens, cron auth | Unit |
+| `tests/integration/checkout` (16) | Idempotent duplicate clicks, gateway outage retry, supersede, price-change snapshot, sales window/group size/policy version/email verification, **concurrent last places**, hold expiry without double release, **final coupon redemption race**, per-user limits, referral attribution & self-referral | Real Postgres |
+| `tests/integration/payments` (20) | Authorised ≠ captured, exactly-once passes under callback/webhook/reconcile races, amount mismatch, stale failures never downgrade, extra captures, late capture (confirm vs needs-review), coupon over-limit, bad/duplicate/out-of-order webhooks, backlog retry, missed-webhook reconciliation, authorised grace, gateway outage, full/partial refunds, email outbox retry | Real Postgres + **mock** Razorpay |
+| `tests/integration/checkin` (5) | QR/manual lookup, forged codes, **concurrent repeat check-in** (exactly one admit), void and demo passes | Real Postgres |
+| `tests/integration/auth-and-routes` (9) | Signup/login via Better Auth, duplicate email, invalid phone/referral, role not self-assignable, **expired reset token**, protected routes (401), CSRF (403), **cross-user booking access (404)**, forged callback rejected, staff route forbidden | Real Postgres + route handlers |
+| `tests/e2e` (Playwright, 10 specs × 2 viewports) | Landing facts & honest placeholders, no overflow (360/1440 and every signed-in page), keyboard FAQ, countdown, gallery failure fallback, venue search link, reduced motion, cursor glitter toggle, **full demo journey** (draft kept through signup → pay → dismiss → retry same booking → passes → staff admit → “Already checked in”), admin access control | Browser, DEMO mode |
+
+Mocked vs real: payment tests use an in-memory Razorpay stand-in with the real
+HMAC algorithms. **Real Razorpay test-mode checkout has not been exercised**
+(no test keys were available). See the handoff checklist in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#4-razorpay-test-mode-first).
+
+## Tooling status
+
+| Tool | Resolved source / version | Where used | Status |
+|---|---|---|---|
+| Motion Primitives | motion-primitives.com, CLI `motion-primitives@0.1.0` (+ `motion@13.4.4`) | Hero TextEffect, AnimatedGroup (experience), InView reveals, Accordion (FAQ), TransitionPanel (booking steps), Carousel (gallery), SlidingNumber (countdown) — adapted for a11y/reduced motion | **Working** |
+| Haikei | haikei.app (web app; ToS forbids automated access) | Section waves, aura blobs, gold scatter | **Awaiting exports** — temporary hand-made SVGs (not Haikei), spec in `public/media/decor/HAIKEI_EXPORTS.md` |
+| TasteSkill | Not installed; no source supplied (likely `Leonxlnx/taste-skill`, unconfirmed) | — | **Unavailable** — not applied |
+| WebDesign Guidelines | Not installed; no source supplied (likely `vercel-labs/agent-skills` → `web-design-guidelines`, unconfirmed) | — | **Unavailable** — not applied |
+| Awesome Design | Not installed; ambiguous (several “awesome design” repos) | — | **Unavailable** — not applied |
+| OmniRoute | Global npm `omniroute@3.8.50` (github.com/diegosouzapw/OmniRoute); gateway + MCP server, not a native plugin | `.mcp.json` registers its MCP endpoint (`localhost:20128/api/mcp/stream`) for Claude Code; website runtime does not depend on it | **Awaiting setup** — doctor OK, server offline; connectivity check not passed |
+
+Details: [`docs/DEV_TOOLING.md`](docs/DEV_TOOLING.md). Asset sources and licences:
+[`docs/ASSET_CREDITS.md`](docs/ASSET_CREDITS.md).
+
+## Missing launch inputs (organiser decisions / secrets)
+
+- **Event start/end time**, **capacity**, **sales open/close**, offer expiry (if any)
+- **Organiser name and contact** (phone/WhatsApp/email/Instagram)
+- **Event terms, privacy policy and cancellation/refund policy** (organiser-approved text)
+- **Drinks details** (currently “menu not announced”; no alcohol is promised)
+- **Verified map pin** for the Advant Navis Park branch
+- **The event poster** (not found in the project) and any **approved venue/previous-event media**; optional hero video
+- **Haikei SVG exports** (see decor spec)
+- Secrets: Neon URLs, `BETTER_AUTH_SECRET`, `TICKET_SIGNING_SECRET`, `CRON_SECRET`,
+  Razorpay **test** keys + webhook secret, Resend key + verified sender domain
+- Razorpay **KYC activation** before any live payments, and your explicit go-ahead

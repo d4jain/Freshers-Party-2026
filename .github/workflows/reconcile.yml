@@ -1,0 +1,29 @@
+# Frequent reconciliation for hosts whose built-in cron is too coarse
+# (Vercel Hobby allows only one run per day). Does nothing until both
+# repository secrets are set:
+#   RECONCILE_URL  e.g. https://your-domain.in/api/cron/reconcile
+#   CRON_SECRET    same value as the app's CRON_SECRET
+# GitHub may delay scheduled runs; reconciliation is idempotent, so delays
+# or duplicates are safe.
+name: reconcile
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call reconcile endpoint
+        env:
+          RECONCILE_URL: ${{ secrets.RECONCILE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$RECONCILE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Secrets not configured; skipping."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer $CRON_SECRET" "$RECONCILE_URL"

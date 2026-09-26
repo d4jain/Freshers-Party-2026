@@ -7,3 +7,11 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Project notes (Freshers’ Party 2026)
+
+- Read `README.md`, `docs/ARCHITECTURE.md` and `docs/PAYMENTS.md` before changing booking/payment code.
+- Invariants: money is integer paise; only `applyPaymentUpdate` confirms bookings; never add an admin “mark paid”;
+  never invent event facts (keep them in the `event_settings` row, edited via Admin → Settings).
+- Checks: `npm run lint && npm run typecheck && npm test` (real Postgres via embedded-postgres), `npm run test:e2e`
+  (needs `npm run db:local`; uses port 3210).
