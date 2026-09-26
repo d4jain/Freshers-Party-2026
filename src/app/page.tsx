@@ -6,7 +6,6 @@ import { SiteFooter } from "@/components/site/footer";
 import { Gallery } from "@/components/site/gallery";
 import { Hero } from "@/components/site/hero";
 import { Marquee } from "@/components/site/marquee";
-import { Menu } from "@/components/site/menu";
 import { SiteNav } from "@/components/site/nav";
 import { ReachOut } from "@/components/site/reach-out";
 import { Reveal } from "@/components/site/reveal";
@@ -88,8 +87,8 @@ function faqItems(event: PublicEvent): FaqItem[] {
       q: "What’s included?",
       a: (
         <p>
-          Unlimited food and unlimited drinks, plus party, dance and games. See the <Link href="#menu">full menu</Link>.{" "}
-          {s.drinksDetails}
+          Unlimited food and unlimited drinks, plus party, dance and games. Tap{" "}
+          <Link href="#experience">Unlimited Food or Unlimited Drinks</Link> to see the menu. {s.drinksDetails}
         </p>
       ),
     },
@@ -195,21 +194,6 @@ export default async function HomePage() {
             </div>
           </Reveal>
           <Experience drinksDetails={s.drinksDetails} />
-        </Section>
-
-        <Section id="menu" labelledBy="menu-title" className="pb-20 sm:pb-28">
-          <Reveal>
-            <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="eyebrow">The Menu</p>
-                <h2 id="menu-title" className="display mt-4 text-[clamp(2.8rem,10vw,6rem)] text-ivory">
-                  Eat. Sip. <em className="text-gold">Repeat.</em>
-                </h2>
-              </div>
-              <p className="max-w-sm text-mist">Starters to dessert, mocktails to the bar — here’s what’s being served.</p>
-            </div>
-          </Reveal>
-          <Menu />
         </Section>
 
         <WaveDivider flip />

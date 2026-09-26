@@ -32,14 +32,6 @@ Notes:
   none were used.
 - Food/drink mood photos above are generic and don't represent the menu.
 
-## Menu photos
-
-`public/media/menu/` holds one illustrative photo per menu item (and one per
-spirit type for the bar list), from Wikimedia Commons under CC0 / CC BY /
-CC BY-SA. Each was resized/cropped to 720×720 JPEG; the rum photo was cropped
-to remove a soft-drink logo. Author, licence and source for every file are in
-`public/media/menu/credits.json` and shown on `/credits`. None show the venue's
-actual food or drinks, and the site says so under the menu.
 
 ## Venue media
 

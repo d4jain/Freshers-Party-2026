@@ -19,8 +19,7 @@ test.describe("public landing page", () => {
       "https://chat.whatsapp.com/FmJaepiArmjAbe7v5fofZA?mode=gi_t",
     );
     await expect(page.getByText(/not organised, endorsed or sponsored by Bennett University/).first()).toBeAttached();
-    // Organiser-supplied menu: the bar list always carries the legal-age note.
-    await expect(page.getByText(/21\+ in Uttar Pradesh/)).toBeAttached();
+    await expect(page.getByText(/menu to be announced/i)).toHaveCount(0);
     expect(await page.content()).not.toMatch(/first[- ]year/i);
     expect(await noHorizontalOverflow(page)).toBe(true);
     for (const y of [1200, 2400, 3600, 4800, 6000]) {
@@ -48,14 +47,19 @@ test.describe("public landing page", () => {
     await expect(page.getByText(/Carry your college ID — you may be asked for it at entry/).first()).toBeVisible();
   });
 
-  test("menu tabs switch between food and drinks", async ({ page }) => {
-    await page.goto("/#menu");
-    await expect(page.getByText("Paneer Tikka")).toBeVisible();
-    await page.getByRole("tab", { name: "Drinks" }).click();
-    await expect(page.getByRole("tab", { name: "Drinks" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("Virgin Mojito")).toBeVisible();
-    await expect(page.getByText("Kingfisher Premium")).toBeVisible();
-    await expect(page.getByText(/21\+ in Uttar Pradesh/)).toBeVisible();
+  test("food and drinks cards open the menu popups", async ({ page }) => {
+    await page.goto("/#experience");
+    await page.getByRole("button", { name: "View the food menu" }).click();
+    const food = page.getByRole("dialog", { name: "Food menu" });
+    await expect(food.getByText("Paneer Tikka")).toBeVisible();
+    await expect(food.getByText("Ice Cream")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(food).toBeHidden();
+    await page.getByRole("button", { name: "View the drinks menu" }).click();
+    const drinks = page.getByRole("dialog", { name: "Drinks menu" });
+    await expect(drinks.getByText("Virgin Mojito")).toBeVisible();
+    await expect(drinks.getByText("Kingfisher Premium")).toBeVisible();
+    await expect(drinks.getByText(/21\+ in Uttar Pradesh/)).toBeVisible();
   });
 
   test("gallery captions stock photos honestly and survives image failures", async ({ page }) => {

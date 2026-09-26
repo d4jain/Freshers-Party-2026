@@ -78,8 +78,8 @@ Google Maps *search* link until a pin is verified. Organiser-supplied facts
 (start time 7:00 am IST, contact email/Instagram, terms, refund policy) seed
 that row from `src/config/event.ts` and `src/config/policies.ts`; `npm run
 db:seed` fills only empty columns and never overwrites an organiser's edits.
-The food & drinks menu lives in `src/config/menu.ts` (photos: illustrative
-Wikimedia Commons images, credited in `public/media/menu/credits.json`).
+The food & drinks menu lives in `src/config/menu.ts` and opens as a popup from
+the “Unlimited Food” / “Unlimited Drinks” cards.
 
 ## How payments work
 

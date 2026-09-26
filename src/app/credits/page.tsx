@@ -40,24 +40,13 @@ function CreditList({ credits }: { credits: Credit[] }) {
 }
 
 export default async function CreditsPage() {
-  const [stock, menu] = await Promise.all([
-    readCredits("public/media/stock/credits.json"),
-    readCredits("public/media/menu/credits.json"),
-  ]);
+  const stock = await readCredits("public/media/stock/credits.json");
   return (
     <PageShell>
       <PageTitle eyebrow="Credits" title="Photo & asset credits">
-        Mood and menu photos are licensed images from Wikimedia Commons and other free sources. None of them show Rubarru, its
-        food or this event.
+        Mood photos are licensed stock (CC0). None of them show Rubarru or this event.
       </PageTitle>
-      <h2 className="mb-4 font-display text-2xl text-gold">Mood photos</h2>
       <CreditList credits={stock} />
-      <h2 className="mt-10 mb-4 font-display text-2xl text-gold">Menu photos</h2>
-      <p className="mb-4 text-sm text-muted">
-        Resized and cropped for this site. CC BY / CC BY-SA images are used under those licences; follow each source link for the
-        full licence.
-      </p>
-      <CreditList credits={menu} />
       <div className="card mt-6 p-4 text-sm text-mist">
         <p>Fonts: Bodoni Moda, Manrope and Pinyon Script (SIL Open Font License) via Google Fonts, self-hosted by Next.js.</p>
         <p className="mt-2">Icons: Lucide (ISC). Animated components adapted from Motion Primitives (MIT).</p>
