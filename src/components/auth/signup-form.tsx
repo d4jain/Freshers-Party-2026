@@ -10,7 +10,15 @@ import { safeNextPath, signupSchema } from "@/lib/validation";
 
 type Errors = Partial<Record<"name" | "phone" | "email" | "password" | "confirmPassword" | "referralCode" | "form", string>>;
 
-export function SignupForm({ next, whatsappUrl }: { next: string | null; whatsappUrl: string }) {
+export function SignupForm({
+  next,
+  whatsappUrl,
+  requireVerification,
+}: {
+  next: string | null;
+  whatsappUrl: string;
+  requireVerification: boolean;
+}) {
   const [values, setValues] = useState({
     name: "",
     phone: "",
@@ -69,10 +77,16 @@ export function SignupForm({ next, whatsappUrl }: { next: string | null; whatsap
         <FormAlert tone="success">
           <span className="flex items-start gap-3">
             <MailCheck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <span>
-              Account created. We’ve sent a verification link to <strong>{done.email}</strong>. Verify your email before paying —
-              it’s where your confirmation goes.
-            </span>
+            {requireVerification ? (
+              <span>
+                Account created. We’ve sent a verification link to <strong>{done.email}</strong>. Verify your email before paying
+                — it’s where your confirmation goes.
+              </span>
+            ) : (
+              <span>
+                Account created — you’re signed in as <strong>{done.email}</strong>. You can book right away.
+              </span>
+            )}
           </span>
         </FormAlert>
         <WhatsAppCta href={whatsappUrl} />

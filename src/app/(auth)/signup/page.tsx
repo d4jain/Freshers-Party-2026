@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PageTitle } from "@/components/site/page-shell";
 import { SignupForm } from "@/components/auth/signup-form";
 import { EVENT_FACTS } from "@/config/event";
+import { env } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Create account", robots: { index: false } };
 
@@ -20,7 +21,7 @@ export default async function SignupPage(props: PageProps<"/signup">) {
       >
         One account holds your bookings and passes. Bookings are for first-year Bennett University students only.
       </PageTitle>
-      <SignupForm next={next} whatsappUrl={EVENT_FACTS.whatsappGroupUrl} />
+      <SignupForm next={next} whatsappUrl={EVENT_FACTS.whatsappGroupUrl} requireVerification={env().REQUIRE_EMAIL_VERIFICATION} />
     </>
   );
 }

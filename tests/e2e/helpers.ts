@@ -30,7 +30,7 @@ export async function signUpAndVerify(page: Page, email: string, opts: { from?: 
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm password").fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
-  await page.getByText("Account created.").waitFor();
+  await page.getByText(/Account created/).waitFor();
   // The verification email goes to the console provider in dev; mark verified directly.
   await db().query(`UPDATE "user" SET email_verified = true WHERE email = $1`, [email]);
 }

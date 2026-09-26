@@ -10,6 +10,7 @@ import { FormAlert } from "@/components/ui/field";
 import { WhatsAppCta } from "@/components/ui/whatsapp-cta";
 import { requireUserPage } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { env } from "@/lib/env";
 import { bookings } from "@/lib/db/schema";
 import { formatDateTimeIST } from "@/lib/format";
 import { formatINR } from "@/lib/money";
@@ -48,7 +49,7 @@ export default async function AccountPage(props: PageProps<"/account">) {
           <FormAlert>You don’t have access to that page.</FormAlert>
         </div>
       )}
-      {!user.emailVerified && (
+      {!user.emailVerified && env().REQUIRE_EMAIL_VERIFICATION && (
         <div className="mb-6">
           <FormAlert tone="info">
             Please verify your email — you’ll need it to pay, and it’s where your confirmation goes.

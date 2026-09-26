@@ -45,7 +45,8 @@ function createAuth() {
       },
     },
     emailVerification: {
-      sendOnSignUp: true,
+      // Only send verification emails when verification is actually required.
+      sendOnSignUp: e.REQUIRE_EMAIL_VERIFICATION,
       autoSignInAfterVerification: true,
       expiresIn: 60 * 60 * 24,
       sendVerificationEmail: async ({ user, url }) => {
