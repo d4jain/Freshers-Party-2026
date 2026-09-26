@@ -9,12 +9,15 @@
 2. Copy two connection strings from **Connect**:
    - **Pooled** (host contains `-pooler`) → `DATABASE_URL` (app runtime).
    - **Direct** → `DATABASE_URL_UNPOOLED` (migrations only).
-3. Apply migrations and seed from your machine:
+3. Copy `.env.live.example` to `.env.live` (git-ignored) and paste the
+   **direct** connection string into `DATABASE_URL_UNPOOLED`. Then apply
+   migrations and seed from your machine:
    ```bash
-   DATABASE_URL_UNPOOLED="postgres://…direct…" npm run db:migrate
-   DATABASE_URL_UNPOOLED="postgres://…direct…" npm run db:seed
+   npm run db:migrate:live
+   npm run db:seed:live
    ```
-   (Never run `db:seed -- --demo` against production — it refuses anyway.)
+   Each command prints the database host it uses and refuses placeholder URLs.
+   (`--demo` is refused because `.env.live` sets `APP_ENV=production`.)
 
 ## 2. Vercel project
 
@@ -49,8 +52,8 @@ The organiser signs up on the site (and verifies their email, unless
 `REQUIRE_EMAIL_VERIFICATION=false`), then someone with database access runs:
 
 ```bash
-DATABASE_URL_UNPOOLED="…" npm run admin:grant -- --email organiser@example.com --role admin
-DATABASE_URL_UNPOOLED="…" npm run admin:grant -- --email volunteer@example.com --role staff
+npm run admin:grant:live -- --email organiser@example.com --role admin
+npm run admin:grant:live -- --email volunteer@example.com --role staff
 ```
 
 No default admin or password exists anywhere in the code.

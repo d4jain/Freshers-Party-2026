@@ -6,18 +6,14 @@
  *   npm run db:seed
  *   npm run db:seed -- --demo
  */
-import "./lib/load-env.mts";
+import { scriptDatabaseUrl } from "./lib/load-env.mts";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { coupons, eventSettings, referralCodes, schema } from "../src/lib/db/schema";
 import { defaultSettingsValues, getSettings } from "../src/lib/settings";
 
-const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
-if (!url) {
-  console.error("Set DATABASE_URL first.");
-  process.exit(1);
-}
+const url = scriptDatabaseUrl();
 const demo = process.argv.includes("--demo");
 const isProd = process.env.APP_ENV === "production" || process.env.VERCEL_ENV === "production";
 if (demo && isProd) {

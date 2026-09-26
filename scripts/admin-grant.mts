@@ -7,7 +7,7 @@
  *   npm run admin:grant -- --email volunteer@example.com --role staff
  *   npm run admin:grant -- --email someone@example.com --role user   (revoke)
  */
-import "./lib/load-env.mts";
+import { scriptDatabaseUrl } from "./lib/load-env.mts";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -23,11 +23,7 @@ if (!email || !role || !["admin", "staff", "user"].includes(role)) {
   console.error("Usage: npm run admin:grant -- --email <email> --role <admin|staff|user>");
   process.exit(1);
 }
-const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
-if (!url) {
-  console.error("Set DATABASE_URL first.");
-  process.exit(1);
-}
+const url = scriptDatabaseUrl();
 const pool = new Pool({ connectionString: url, max: 1 });
 const db = drizzle(pool, { schema });
 const [u] = await db.select().from(user).where(eq(user.email, email)).limit(1);
