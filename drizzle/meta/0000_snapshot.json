@@ -1,5 +1,5 @@
 {
-  "id": "4290d8ce-0d21-4466-8b4e-fb44667c4593",
+  "id": "6c9a784f-47de-43f5-9945-6981baf35073",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -352,121 +352,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.booking_exceptions": {
-      "name": "booking_exceptions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "booking_id": {
-          "name": "booking_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "exception_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dedupe_key": {
-          "name": "dedupe_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "details": {
-          "name": "details",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_by": {
-          "name": "resolved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolution_note": {
-          "name": "resolution_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "booking_exceptions_open_idx": {
-          "name": "booking_exceptions_open_idx",
-          "columns": [
-            {
-              "expression": "resolved_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "booking_exceptions_booking_id_bookings_id_fk": {
-          "name": "booking_exceptions_booking_id_bookings_id_fk",
-          "tableFrom": "booking_exceptions",
-          "tableTo": "bookings",
-          "columnsFrom": [
-            "booking_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "booking_exceptions_dedupe_key_unique": {
-          "name": "booking_exceptions_dedupe_key_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "dedupe_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.bookings": {
       "name": "bookings",
       "schema": "",
@@ -663,12 +548,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "payment_provider": {
-          "name": "payment_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "is_demo": {
           "name": "is_demo",
           "type": "boolean",
@@ -676,20 +555,26 @@
           "notNull": true,
           "default": false
         },
-        "gateway_order_id": {
-          "name": "gateway_order_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gateway_order_created_at": {
-          "name": "gateway_order_created_at",
+        "payment_submitted_at": {
+          "name": "payment_submitted_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
-        "captured_payment_id": {
-          "name": "captured_payment_id",
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_note": {
+          "name": "review_note",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -712,8 +597,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "refunded_at": {
-          "name": "refunded_at",
+        "cancelled_at": {
+          "name": "cancelled_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -877,6 +762,19 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "bookings_reviewed_by_user_id_fk": {
+          "name": "bookings_reviewed_by_user_id_fk",
+          "tableFrom": "bookings",
+          "tableTo": "user",
+          "columnsFrom": [
+            "reviewed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -886,20 +784,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "reference"
-          ]
-        },
-        "bookings_gateway_order_id_unique": {
-          "name": "bookings_gateway_order_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "gateway_order_id"
-          ]
-        },
-        "bookings_captured_payment_id_unique": {
-          "name": "bookings_captured_payment_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "captured_payment_id"
           ]
         }
       },
@@ -1618,7 +1502,7 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "default": 15
+          "default": 30
         },
         "sales_open_at": {
           "name": "sales_open_at",
@@ -1677,6 +1561,24 @@
         },
         "whatsapp_group_url": {
           "name": "whatsapp_group_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upi_id": {
+          "name": "upi_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upi_payee_name": {
+          "name": "upi_payee_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payment_qr_path": {
+          "name": "payment_qr_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1788,7 +1690,7 @@
         },
         "event_settings_hold_positive": {
           "name": "event_settings_hold_positive",
-          "value": "\"event_settings\".\"hold_minutes\" BETWEEN 5 AND 60"
+          "value": "\"event_settings\".\"hold_minutes\" BETWEEN 5 AND 180"
         }
       },
       "isRLSEnabled": false
@@ -1913,8 +1815,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.payment_attempts": {
-      "name": "payment_attempts",
+    "public.payment_proofs": {
+      "name": "payment_proofs",
       "schema": "",
       "columns": {
         "id": {
@@ -1930,30 +1832,23 @@
           "primaryKey": false,
           "notNull": true
         },
-        "provider": {
-          "name": "provider",
+        "user_id": {
+          "name": "user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "gateway_order_id": {
-          "name": "gateway_order_id",
+        "utr": {
+          "name": "utr",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "gateway_payment_id": {
-          "name": "gateway_payment_id",
+        "payer_name": {
+          "name": "payer_name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "payment_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "amount_paise": {
           "name": "amount_paise",
@@ -1961,65 +1856,32 @@
           "primaryKey": false,
           "notNull": true
         },
-        "currency": {
-          "name": "currency",
+        "image": {
+          "name": "image",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "amount_refunded_paise": {
-          "name": "amount_refunded_paise",
+        "size_bytes": {
+          "name": "size_bytes",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": true
         },
-        "method": {
-          "name": "method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "error_code": {
-          "name": "error_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "error_description": {
-          "name": "error_description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_extra_capture": {
-          "name": "is_extra_capture",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "captured_at": {
-          "name": "captured_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_source": {
-          "name": "last_source",
+        "sha256": {
+          "name": "sha256",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
+        "submitted_at": {
+          "name": "submitted_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -2027,11 +1889,11 @@
         }
       },
       "indexes": {
-        "payment_attempts_booking_idx": {
-          "name": "payment_attempts_booking_idx",
+        "payment_proofs_utr_idx": {
+          "name": "payment_proofs_utr_idx",
           "columns": [
             {
-              "expression": "booking_id",
+              "expression": "utr",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2042,11 +1904,11 @@
           "method": "btree",
           "with": {}
         },
-        "payment_attempts_order_idx": {
-          "name": "payment_attempts_order_idx",
+        "payment_proofs_sha_idx": {
+          "name": "payment_proofs_sha_idx",
           "columns": [
             {
-              "expression": "gateway_order_id",
+              "expression": "sha256",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2059,12 +1921,25 @@
         }
       },
       "foreignKeys": {
-        "payment_attempts_booking_id_bookings_id_fk": {
-          "name": "payment_attempts_booking_id_bookings_id_fk",
-          "tableFrom": "payment_attempts",
+        "payment_proofs_booking_id_bookings_id_fk": {
+          "name": "payment_proofs_booking_id_bookings_id_fk",
+          "tableFrom": "payment_proofs",
           "tableTo": "bookings",
           "columnsFrom": [
             "booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payment_proofs_user_id_user_id_fk": {
+          "name": "payment_proofs_user_id_user_id_fk",
+          "tableFrom": "payment_proofs",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -2075,19 +1950,23 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "payment_attempts_gateway_payment_id_unique": {
-          "name": "payment_attempts_gateway_payment_id_unique",
+        "payment_proofs_booking_id_unique": {
+          "name": "payment_proofs_booking_id_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "gateway_payment_id"
+            "booking_id"
           ]
         }
       },
       "policies": {},
       "checkConstraints": {
-        "payment_attempts_amounts_nonneg": {
-          "name": "payment_attempts_amounts_nonneg",
-          "value": "\"payment_attempts\".\"amount_paise\" >= 0 AND \"payment_attempts\".\"amount_refunded_paise\" >= 0"
+        "payment_proofs_amount_positive": {
+          "name": "payment_proofs_amount_positive",
+          "value": "\"payment_proofs\".\"amount_paise\" > 0"
+        },
+        "payment_proofs_utr_format": {
+          "name": "payment_proofs_utr_format",
+          "value": "\"payment_proofs\".\"utr\" ~ '^[A-Z0-9]{6,35}$'"
         }
       },
       "isRLSEnabled": false
@@ -2725,113 +2604,6 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
-    },
-    "public.webhook_events": {
-      "name": "webhook_events",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_id": {
-          "name": "event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_type": {
-          "name": "event_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "processed_at": {
-          "name": "processed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "webhook_events_provider_event_uq": {
-          "name": "webhook_events_provider_event_uq",
-          "columns": [
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "event_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "webhook_events_unprocessed_idx": {
-          "name": "webhook_events_unprocessed_idx",
-          "columns": [
-            {
-              "expression": "processed_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -2840,10 +2612,11 @@
       "schema": "public",
       "values": [
         "pending_payment",
+        "in_review",
         "confirmed",
+        "rejected",
         "expired",
-        "needs_review",
-        "refunded"
+        "cancelled"
       ]
     },
     "public.coupon_reservation_status": {
@@ -2873,19 +2646,6 @@
         "failed"
       ]
     },
-    "public.exception_kind": {
-      "name": "exception_kind",
-      "schema": "public",
-      "values": [
-        "capacity_unavailable_after_capture",
-        "amount_mismatch",
-        "extra_capture",
-        "partial_refund",
-        "coupon_over_limit",
-        "capture_on_refunded_booking",
-        "unknown_order"
-      ]
-    },
     "public.hold_status": {
       "name": "hold_status",
       "schema": "public",
@@ -2893,18 +2653,6 @@
         "active",
         "consumed",
         "released"
-      ]
-    },
-    "public.payment_status": {
-      "name": "payment_status",
-      "schema": "public",
-      "values": [
-        "created",
-        "authorized",
-        "captured",
-        "failed",
-        "partially_refunded",
-        "refunded"
       ]
     },
     "public.referral_owner_type": {

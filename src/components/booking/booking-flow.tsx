@@ -29,7 +29,7 @@ export type BookingFlowProps = {
     holdMinutes: number;
   };
   sales: { open: boolean; message: string | null; setupHint: string | null };
-  paymentMode: "razorpay" | "demo" | "disabled";
+  demo: boolean;
   requireVerifiedEmail: boolean;
 };
 
@@ -75,7 +75,7 @@ function BookingFlowInner({
   user,
   config,
   sales,
-  paymentMode,
+  demo,
   requireVerifiedEmail,
   draft,
   persist,
@@ -240,7 +240,7 @@ function BookingFlowInner({
       : null;
 
   async function pay() {
-    if (submitting || runner.phase === "animating" || runner.phase === "verifying") return;
+    if (submitting || runner.busy) return;
     setSubmitting(true); // disables the button immediately
     setFormError(null);
     const req = buildRequest();
@@ -268,18 +268,14 @@ function BookingFlowInner({
         return;
       }
       const c = body.checkout;
-      if (c.status === "confirmed") {
+      if (c.status !== "pending_payment") {
         clearDraft();
         router.push(`/account/bookings/${c.bookingId}`);
         return;
       }
-      if (!c.order) {
-        setFormError("This booking can’t be paid right now. Check My bookings for its status.");
-        return;
-      }
-      if (breakdown && c.order.amountPaise !== breakdown.totalPaise) {
+      if (breakdown && c.totalPaise !== breakdown.totalPaise) {
         setServerBreakdown(c.breakdown);
-        setFormError(`The total is now ${formatINR(c.order.amountPaise)}. Please review it and tap Pay again.`);
+        setFormError(`The total is now ${formatINR(c.totalPaise)}. Please review it and tap Continue again.`);
         return;
       }
       clearDraft();
@@ -291,7 +287,7 @@ function BookingFlowInner({
     }
   }
 
-  const busy = submitting || runner.phase === "animating" || runner.phase === "verifying" || runner.phase === "open";
+  const busy = submitting || runner.busy;
 
   const panels = [
     // Step 1 — group
@@ -539,27 +535,6 @@ function BookingFlowInner({
       </fieldset>
 
       {formError && <FormAlert>{formError}</FormAlert>}
-      {runner.paymentNote && <FormAlert tone="info">{runner.paymentNote}</FormAlert>}
-      {runner.phase === "dismissed" && runner.payload && (
-        <FormAlert tone="info">
-          Checkout closed — nothing is confirmed until payment is captured. Your places are held until{" "}
-          {new Date(runner.payload.holdExpiresAt).toLocaleTimeString("en-IN", {
-            hour: "numeric",
-            minute: "2-digit",
-            timeZone: "Asia/Kolkata",
-          })}{" "}
-          IST. Tap Pay to try again.
-        </FormAlert>
-      )}
-      {runner.phase === "sdk_error" && (
-        <FormAlert>
-          We couldn’t load secure checkout. Check your connection and{" "}
-          <button type="button" className="font-bold underline" onClick={runner.retrySdk}>
-            retry
-          </button>
-          . Nothing has been charged.
-        </FormAlert>
-      )}
       {payDisabledReason && (
         <FormAlert tone="info">
           {payDisabledReason}
@@ -571,9 +546,9 @@ function BookingFlowInner({
           )}
         </FormAlert>
       )}
-      {paymentMode === "demo" && (
+      {demo && (
         <p className="rounded-xl border border-dashed border-danger/50 px-3 py-2 text-xs font-semibold text-[#ffd3cb]">
-          Demo mode: no real payment will be taken and demo passes are not valid for entry.
+          Demo mode: bookings and passes are marked DEMO and are not valid for entry.
         </p>
       )}
 
@@ -593,13 +568,17 @@ function BookingFlowInner({
           ) : (
             <Lock className="h-4 w-4" aria-hidden="true" />
           )}
-          {submitting ? "Holding your places…" : breakdown ? `Pay ${formatINR(breakdown.totalPaise)}` : "Pay now"}
+          {submitting
+            ? "Holding your places…"
+            : breakdown
+              ? `Continue to pay ${formatINR(breakdown.totalPaise)}`
+              : "Continue to pay"}
         </button>
       </div>
       <p id="pay-note" className="flex items-start gap-2 text-xs text-muted">
         <ShieldCheck className="h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
-        {paymentMode === "demo" ? "Demo checkout." : "Secure payment by Razorpay. We never see your card or UPI details."} Places
-        are held for {config.holdMinutes} minutes while you pay.
+        Next you’ll see a UPI QR for the exact amount. Pay with any UPI app, then upload your payment screenshot and transaction
+        ID. Your places are held for {config.holdMinutes} minutes; organisers verify every payment before passes are issued.
       </p>
     </section>,
   ];
@@ -631,7 +610,7 @@ function BookingFlowInner({
       {runner.overlays}
       <p className="mt-10 flex items-center gap-2 text-xs text-muted">
         <TicketCheck className="h-4 w-4 text-gold" aria-hidden="true" />
-        Your booking is confirmed only after payment is captured and verified.
+        Your booking is confirmed only after the organisers verify your payment.
       </p>
     </div>
   );

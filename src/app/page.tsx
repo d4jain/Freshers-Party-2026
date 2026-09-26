@@ -50,8 +50,8 @@ function faqItems(event: PublicEvent): FaqItem[] {
       q: "How do I pay?",
       a: (
         <p>
-          Online through Razorpay’s secure checkout, using the payment methods it shows you. We never see or store your card or
-          UPI details. You’ll see the full itemised total before you pay.
+          By UPI. After you review your order we show a QR code for the exact amount — pay with any UPI app (GPay, PhonePe,
+          Paytm…), then upload the payment screenshot and its transaction ID. We never ask for your UPI PIN.
         </p>
       ),
     },
@@ -59,9 +59,9 @@ function faqItems(event: PublicEvent): FaqItem[] {
       q: "When is my booking confirmed?",
       a: (
         <p>
-          Only after your payment is captured and verified on our server. Your passes then appear under{" "}
-          <Link href="/account">My bookings</Link> and we email a confirmation. If your payment goes through but the page says
-          “Checking payment status”, don’t pay again — it updates automatically.
+          Once the organisers check your payment in their UPI account. Until then your booking shows as “In review” under{" "}
+          <Link href="/account">My bookings</Link> and your places stay reserved. After approval your passes appear there and we
+          email a confirmation. Please don’t pay twice.
         </p>
       ),
     },
@@ -97,8 +97,8 @@ function faqItems(event: PublicEvent): FaqItem[] {
       q: "Can I cancel or get a refund?",
       a: s.refundPolicyText ? (
         <p>
-          See the <Link href="/refund-policy">cancellation & refund policy</Link>. Refunds, where applicable, go back to your
-          original payment method through Razorpay.
+          See the <Link href="/refund-policy">cancellation & refund policy</Link>. Approved refunds are sent back by the
+          organisers via UPI.
         </p>
       ) : (
         <p>

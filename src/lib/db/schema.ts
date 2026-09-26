@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  customType,
   bigint,
   boolean,
   check,
@@ -21,6 +22,9 @@ import {
  * displayed in Asia/Kolkata by the UI layer. All money is integer paise.
  */
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+/** Raw binary (Postgres bytea) — used for payment-proof images. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
 const createdAt = () => ts("created_at").notNull().defaultNow();
 const updatedAt = () =>
   ts("updated_at")
@@ -156,7 +160,8 @@ export const eventSettings = pgTable(
     bookingFeeLabel: text("booking_fee_label"),
     capacity: integer("capacity"),
     maxGroupSize: integer("max_group_size").notNull().default(10),
-    holdMinutes: integer("hold_minutes").notNull().default(15),
+    /** Minutes a new booking keeps its places while the buyer pays and uploads proof. */
+    holdMinutes: integer("hold_minutes").notNull().default(30),
     salesOpenAt: ts("sales_open_at"),
     salesCloseAt: ts("sales_close_at"),
     offerExpiresAt: ts("offer_expires_at"),
@@ -168,6 +173,10 @@ export const eventSettings = pgTable(
     organiserEmail: text("organiser_email"),
     organiserInstagram: text("organiser_instagram"),
     whatsappGroupUrl: text("whatsapp_group_url"),
+    /** UPI payment details shown at checkout (from the organiser's QR). */
+    upiId: text("upi_id"),
+    upiPayeeName: text("upi_payee_name"),
+    paymentQrPath: text("payment_qr_path"),
     drinksDetails: text("drinks_details"),
     termsText: text("terms_text"),
     privacyText: text("privacy_text"),
@@ -188,7 +197,7 @@ export const eventSettings = pgTable(
     check("event_settings_fee_nonneg", sql`${t.bookingFeePaise} >= 0`),
     check("event_settings_capacity_nonneg", sql`${t.capacity} IS NULL OR ${t.capacity} >= 0`),
     check("event_settings_group_positive", sql`${t.maxGroupSize} >= 1`),
-    check("event_settings_hold_positive", sql`${t.holdMinutes} BETWEEN 5 AND 60`),
+    check("event_settings_hold_positive", sql`${t.holdMinutes} BETWEEN 5 AND 180`),
   ],
 );
 
@@ -265,13 +274,19 @@ export const coupons = pgTable(
 
 /**
  * Booking states — see docs/PAYMENTS.md for the transition table.
- *   pending_payment → confirmed | expired | needs_review
- *   expired         → confirmed (late capture, capacity rechecked) | needs_review
- *   needs_review    → confirmed (organiser retry, capacity rechecked) | refunded
- *   confirmed       → refunded (full refund synced from Razorpay)
- * A confirmed booking is never downgraded by a stale failure event.
+ *   pending_payment → in_review (proof uploaded) | expired (hold lapsed, no proof)
+ *   in_review       → confirmed (organiser approves) | rejected (organiser rejects)
+ *   confirmed       → cancelled (organiser cancels, e.g. after a manual refund)
+ * Only an organiser approval confirms a booking and issues passes.
  */
-export const bookingStatus = pgEnum("booking_status", ["pending_payment", "confirmed", "expired", "needs_review", "refunded"]);
+export const bookingStatus = pgEnum("booking_status", [
+  "pending_payment",
+  "in_review",
+  "confirmed",
+  "rejected",
+  "expired",
+  "cancelled",
+]);
 
 export const bookings = pgTable(
   "bookings",
@@ -318,16 +333,17 @@ export const bookings = pgTable(
     termsAckAt: ts("terms_ack_at").notNull(),
     termsAckPolicyVersion: integer("terms_ack_policy_version").notNull(),
 
-    paymentProvider: text("payment_provider").notNull(),
     isDemo: boolean("is_demo").notNull().default(false),
-    gatewayOrderId: text("gateway_order_id").unique(),
-    gatewayOrderCreatedAt: ts("gateway_order_created_at"),
-    capturedPaymentId: text("captured_payment_id").unique(),
+    paymentSubmittedAt: ts("payment_submitted_at"),
+    reviewedAt: ts("reviewed_at"),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    /** Organiser's note on approval, or the reason shown to the buyer on rejection/cancellation. */
+    reviewNote: text("review_note"),
 
     holdExpiresAt: ts("hold_expires_at").notNull(),
     confirmedAt: ts("confirmed_at"),
     expiredAt: ts("expired_at"),
-    refundedAt: ts("refunded_at"),
+    cancelledAt: ts("cancelled_at"),
     statusReason: text("status_reason"),
 
     createdAt: createdAt(),
@@ -443,101 +459,39 @@ export const couponReservations = pgTable(
 );
 
 /* ------------------------------------------------------------------ */
-/* Payment attempts (one row per gateway payment id)                    */
+/* Payment proofs (UPI screenshot + transaction id, one per booking)    */
 /* ------------------------------------------------------------------ */
 
-export const paymentStatus = pgEnum("payment_status", [
-  "created",
-  "authorized",
-  "captured",
-  "failed",
-  "partially_refunded",
-  "refunded",
-]);
-
-export const paymentAttempts = pgTable(
-  "payment_attempts",
+export const paymentProofs = pgTable(
+  "payment_proofs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     bookingId: uuid("booking_id")
       .notNull()
-      .references(() => bookings.id, { onDelete: "restrict" }),
-    provider: text("provider").notNull(),
-    gatewayOrderId: text("gateway_order_id").notNull(),
-    gatewayPaymentId: text("gateway_payment_id").notNull().unique(),
-    status: paymentStatus("status").notNull(),
+      .unique()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    /** UPI transaction / UTR reference, normalised to uppercase. */
+    utr: text("utr").notNull(),
+    payerName: text("payer_name"),
+    /** Amount the buyer was asked to pay (the booking total at submission). */
     amountPaise: integer("amount_paise").notNull(),
-    currency: text("currency").notNull(),
-    amountRefundedPaise: integer("amount_refunded_paise").notNull().default(0),
-    method: text("method"),
-    errorCode: text("error_code"),
-    errorDescription: text("error_description"),
-    /** Set when this capture is not the booking's primary payment. */
-    isExtraCapture: boolean("is_extra_capture").notNull().default(false),
-    capturedAt: ts("captured_at"),
-    lastSource: text("last_source").notNull(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
+    /** Re-encoded JPEG (metadata stripped). */
+    image: bytea("image").notNull(),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    /** SHA-256 of the uploaded bytes, to spot the same screenshot reused. */
+    sha256: text("sha256").notNull(),
+    submittedAt: ts("submitted_at").notNull().defaultNow(),
   },
   (t) => [
-    index("payment_attempts_booking_idx").on(t.bookingId),
-    index("payment_attempts_order_idx").on(t.gatewayOrderId),
-    check("payment_attempts_amounts_nonneg", sql`${t.amountPaise} >= 0 AND ${t.amountRefundedPaise} >= 0`),
+    index("payment_proofs_utr_idx").on(t.utr),
+    index("payment_proofs_sha_idx").on(t.sha256),
+    check("payment_proofs_amount_positive", sql`${t.amountPaise} > 0`),
+    check("payment_proofs_utr_format", sql`${t.utr} ~ '^[A-Z0-9]{6,35}$'`),
   ],
-);
-
-/* ------------------------------------------------------------------ */
-/* Webhook events (deduplicated by provider event id)                   */
-/* ------------------------------------------------------------------ */
-
-export const webhookEvents = pgTable(
-  "webhook_events",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    provider: text("provider").notNull(),
-    eventId: text("event_id").notNull(),
-    eventType: text("event_type").notNull(),
-    payload: jsonb("payload").notNull(),
-    receivedAt: ts("received_at").notNull().defaultNow(),
-    processedAt: ts("processed_at"),
-    attempts: integer("attempts").notNull().default(0),
-    lastError: text("last_error"),
-  },
-  (t) => [
-    uniqueIndex("webhook_events_provider_event_uq").on(t.provider, t.eventId),
-    index("webhook_events_unprocessed_idx").on(t.processedAt),
-  ],
-);
-
-/* ------------------------------------------------------------------ */
-/* Exceptions / reconciliation queue                                    */
-/* ------------------------------------------------------------------ */
-
-export const exceptionKind = pgEnum("exception_kind", [
-  "capacity_unavailable_after_capture",
-  "amount_mismatch",
-  "extra_capture",
-  "partial_refund",
-  "coupon_over_limit",
-  "capture_on_refunded_booking",
-  "unknown_order",
-]);
-
-export const bookingExceptions = pgTable(
-  "booking_exceptions",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "cascade" }),
-    kind: exceptionKind("kind").notNull(),
-    /** Prevents duplicate rows for the same underlying problem. */
-    dedupeKey: text("dedupe_key").notNull().unique(),
-    details: jsonb("details").notNull().default({}),
-    resolvedAt: ts("resolved_at"),
-    resolvedBy: text("resolved_by"),
-    resolutionNote: text("resolution_note"),
-    createdAt: createdAt(),
-  },
-  (t) => [index("booking_exceptions_open_idx").on(t.resolvedAt, t.createdAt)],
 );
 
 /* ------------------------------------------------------------------ */
@@ -660,9 +614,7 @@ export const schema = {
   bookingEvents,
   inventoryHolds,
   couponReservations,
-  paymentAttempts,
-  webhookEvents,
-  bookingExceptions,
+  paymentProofs,
   tickets,
   checkInEvents,
   emailOutbox,
@@ -674,5 +626,5 @@ export type Booking = typeof bookings.$inferSelect;
 export type EventSettingsRow = typeof eventSettings.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
 export type Ticket = typeof tickets.$inferSelect;
-export type PaymentAttempt = typeof paymentAttempts.$inferSelect;
+export type PaymentProof = typeof paymentProofs.$inferSelect;
 export type UserRow = typeof user.$inferSelect;

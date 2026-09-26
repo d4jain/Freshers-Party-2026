@@ -1,15 +1,13 @@
 import "server-only";
 import { after } from "next/server";
 import { getDb } from "@/lib/db";
-import { env } from "@/lib/env";
-import { getGateway, resolvePaymentMode } from "@/lib/payments";
+import { env, isDemoMode } from "@/lib/env";
 
 /** Wiring for route handlers; services themselves take explicit dependencies. */
 export function checkoutDeps() {
   return {
     db: getDb(),
-    gateway: getGateway(),
-    mode: resolvePaymentMode(),
+    demo: isDemoMode(),
     requireVerifiedEmail: env().REQUIRE_EMAIL_VERIFICATION,
   };
 }

@@ -24,7 +24,7 @@ export default async function AdminBookings(props: PageProps<"/admin/bookings">)
           id="q"
           name="q"
           defaultValue={q}
-          placeholder="Reference, name, email, phone, order/payment id, code"
+          placeholder="Reference, name, email, phone, UPI transaction ID, code"
           className="field"
         />
         <label className="sr-only" htmlFor="status">
@@ -63,7 +63,7 @@ export default async function AdminBookings(props: PageProps<"/admin/bookings">)
                 Total
               </th>
               <th scope="col" className="px-4 py-3">
-                Gateway
+                Submitted / reviewed
               </th>
               <th scope="col" className="px-4 py-3">
                 Created
@@ -93,8 +93,8 @@ export default async function AdminBookings(props: PageProps<"/admin/bookings">)
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{formatINR(b.totalPaise)}</td>
                 <td className="px-4 py-3 font-mono text-xs text-muted">
-                  <div>{b.gatewayOrderId ?? "—"}</div>
-                  <div>{b.capturedPaymentId ?? ""}</div>
+                  <div>{b.paymentSubmittedAt ? formatDateTimeIST(b.paymentSubmittedAt) : "—"}</div>
+                  <div>{b.reviewedAt ? formatDateTimeIST(b.reviewedAt) : ""}</div>
                 </td>
                 <td className="px-4 py-3 text-xs text-muted">{formatDateTimeIST(b.createdAt)}</td>
               </tr>

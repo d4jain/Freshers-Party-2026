@@ -3,7 +3,16 @@ import type { DB } from "@/lib/db";
 import { bookings, emailOutbox } from "@/lib/db/schema";
 import { getSettings } from "@/lib/settings";
 import { getEmailProvider, type EmailProvider } from "./provider";
-import { bookingConfirmationEmail } from "./templates";
+import type { EmailMessage } from "./provider";
+import { bookingCancelledEmail, bookingConfirmationEmail, bookingRejectedEmail, proofSubmittedAdminEmail } from "./templates";
+
+/** Booking state each email kind requires at send time (stale messages are dropped). */
+const REQUIRED_STATUS: Record<string, string> = {
+  booking_confirmation: "confirmed",
+  booking_rejected: "rejected",
+  booking_cancelled: "cancelled",
+  proof_submitted_admin: "in_review",
+};
 
 const MAX_ATTEMPTS = 8;
 
@@ -43,16 +52,22 @@ export async function processEmailOutbox(
     const [msg] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, id));
     if (!msg) continue;
     try {
-      if (msg.kind !== "booking_confirmation" || !msg.bookingId) throw new Error(`Unknown email kind ${msg.kind}`);
+      const required = REQUIRED_STATUS[msg.kind];
+      if (!required || !msg.bookingId) throw new Error(`Unknown email kind ${msg.kind}`);
       const [booking] = await db.select().from(bookings).where(eq(bookings.id, msg.bookingId));
-      if (!booking || booking.status !== "confirmed") {
+      if (!booking || booking.status !== required) {
         await db
           .update(emailOutbox)
-          .set({ status: "failed", lastError: "Booking is no longer confirmed" })
+          .set({ status: "failed", lastError: `Booking is no longer ${required}` })
           .where(eq(emailOutbox.id, id));
         continue;
       }
-      const content = bookingConfirmationEmail({ booking, settings: settings!, appUrl: opts.appUrl });
+      let content: Omit<EmailMessage, "to">;
+      if (msg.kind === "booking_confirmation")
+        content = bookingConfirmationEmail({ booking, settings: settings!, appUrl: opts.appUrl });
+      else if (msg.kind === "booking_rejected") content = bookingRejectedEmail({ booking, appUrl: opts.appUrl });
+      else if (msg.kind === "booking_cancelled") content = bookingCancelledEmail({ booking, appUrl: opts.appUrl });
+      else content = proofSubmittedAdminEmail({ booking, appUrl: opts.appUrl });
       const res = await provider.send({ ...content, to: msg.toEmail, idempotencyKey: msg.dedupeKey });
       if (res.ok) {
         await db

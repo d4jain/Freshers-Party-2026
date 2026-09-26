@@ -90,12 +90,6 @@ export const pricePreviewSchema = z.object({
   couponCode: optionalCodeSchema("Coupon code"),
 });
 
-export const razorpayCallbackSchema = z.object({
-  razorpay_payment_id: z.string().regex(/^pay_[A-Za-z0-9]{6,40}$/),
-  razorpay_order_id: z.string().regex(/^order_[A-Za-z0-9]{6,40}$/),
-  razorpay_signature: z.string().regex(/^[a-f0-9]{64}$/),
-});
-
 /** Safe in-app redirect targets only (prevents open redirects). */
 export function safeNextPath(next: string | null | undefined, fallback = "/account"): string {
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return fallback;

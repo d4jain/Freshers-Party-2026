@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Wordmark } from "@/components/site/wordmark";
 import { requireRolePage } from "@/lib/auth/session";
-import { resolvePaymentMode } from "@/lib/payments";
+import { isDemoMode } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Organiser dashboard", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const NAV = [
   ["/admin", "Overview"],
   ["/admin/bookings", "Bookings"],
-  ["/admin/exceptions", "Exceptions"],
+  ["/admin/review", "Payment review"],
   ["/admin/coupons", "Coupons"],
   ["/admin/referrals", "Referrals"],
   ["/admin/settings", "Settings"],
@@ -20,7 +20,7 @@ const NAV = [
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRolePage(["admin"], "/admin");
-  const mode = resolvePaymentMode();
+  const demo = isDemoMode();
   return (
     <div className="min-h-dvh bg-ink" data-no-glitter>
       <header className="sticky top-0 z-40 border-b border-gold/15 bg-ink/90 backdrop-blur-xl">
@@ -28,15 +28,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex items-center gap-4">
             <Wordmark />
             <span className="rounded-full border border-gold/30 px-2.5 py-0.5 text-xs font-bold text-gold">Organiser</span>
-            <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${mode.kind === "razorpay" && mode.keyMode === "live" ? "bg-danger/20 text-danger" : mode.kind === "demo" ? "border border-dashed border-danger/60 text-danger" : "bg-ivory/10 text-mist"}`}
-            >
-              {mode.kind === "razorpay"
-                ? `Razorpay ${mode.keyMode.toUpperCase()}`
-                : mode.kind === "demo"
-                  ? "DEMO MODE"
-                  : "Payments off"}
-            </span>
+            {demo && (
+              <span className="rounded-full border border-dashed border-danger/60 px-2.5 py-0.5 text-xs font-bold text-danger">
+                DEMO MODE
+              </span>
+            )}
           </div>
           <p className="hidden truncate text-xs text-muted sm:block">Signed in as {user.email}</p>
         </div>

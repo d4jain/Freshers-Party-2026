@@ -4,7 +4,7 @@
  * All values are integer paise.
  */
 
-export const MIN_PAYABLE_PAISE = 100; // Razorpay's minimum order amount is ₹1.
+export const MIN_PAYABLE_PAISE = 100; // Never ask anyone to pay ₹0; ₹1 minimum.
 
 export type CouponForPricing = {
   id: string;

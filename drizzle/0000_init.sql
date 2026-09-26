@@ -1,10 +1,8 @@
-CREATE TYPE "public"."booking_status" AS ENUM('pending_payment', 'confirmed', 'expired', 'needs_review', 'refunded');--> statement-breakpoint
+CREATE TYPE "public"."booking_status" AS ENUM('pending_payment', 'in_review', 'confirmed', 'rejected', 'expired', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."coupon_reservation_status" AS ENUM('held', 'committed', 'released');--> statement-breakpoint
 CREATE TYPE "public"."discount_type" AS ENUM('fixed', 'percent');--> statement-breakpoint
 CREATE TYPE "public"."email_status" AS ENUM('pending', 'sending', 'sent', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."exception_kind" AS ENUM('capacity_unavailable_after_capture', 'amount_mismatch', 'extra_capture', 'partial_refund', 'coupon_over_limit', 'capture_on_refunded_booking', 'unknown_order');--> statement-breakpoint
 CREATE TYPE "public"."hold_status" AS ENUM('active', 'consumed', 'released');--> statement-breakpoint
-CREATE TYPE "public"."payment_status" AS ENUM('created', 'authorized', 'captured', 'failed', 'partially_refunded', 'refunded');--> statement-breakpoint
 CREATE TYPE "public"."referral_owner_type" AS ENUM('organiser', 'campaign', 'user');--> statement-breakpoint
 CREATE TYPE "public"."ticket_status" AS ENUM('valid', 'void');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('user', 'staff', 'admin');--> statement-breakpoint
@@ -51,19 +49,6 @@ CREATE TABLE "booking_events" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "booking_exceptions" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"booking_id" uuid,
-	"kind" "exception_kind" NOT NULL,
-	"dedupe_key" text NOT NULL,
-	"details" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"resolved_at" timestamp with time zone,
-	"resolved_by" text,
-	"resolution_note" text,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "booking_exceptions_dedupe_key_unique" UNIQUE("dedupe_key")
-);
---> statement-breakpoint
 CREATE TABLE "bookings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"reference" text NOT NULL,
@@ -96,21 +81,19 @@ CREATE TABLE "bookings" (
 	"eligibility_ack_text" text NOT NULL,
 	"terms_ack_at" timestamp with time zone NOT NULL,
 	"terms_ack_policy_version" integer NOT NULL,
-	"payment_provider" text NOT NULL,
 	"is_demo" boolean DEFAULT false NOT NULL,
-	"gateway_order_id" text,
-	"gateway_order_created_at" timestamp with time zone,
-	"captured_payment_id" text,
+	"payment_submitted_at" timestamp with time zone,
+	"reviewed_at" timestamp with time zone,
+	"reviewed_by" text,
+	"review_note" text,
 	"hold_expires_at" timestamp with time zone NOT NULL,
 	"confirmed_at" timestamp with time zone,
 	"expired_at" timestamp with time zone,
-	"refunded_at" timestamp with time zone,
+	"cancelled_at" timestamp with time zone,
 	"status_reason" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "bookings_reference_unique" UNIQUE("reference"),
-	CONSTRAINT "bookings_gateway_order_id_unique" UNIQUE("gateway_order_id"),
-	CONSTRAINT "bookings_captured_payment_id_unique" UNIQUE("captured_payment_id"),
 	CONSTRAINT "bookings_qty_positive" CHECK ("bookings"."quantity_total" >= 1),
 	CONSTRAINT "bookings_qty_nonneg" CHECK ("bookings"."quantity_girls" >= 0 AND "bookings"."quantity_boys" >= 0),
 	CONSTRAINT "bookings_qty_sum" CHECK ("bookings"."quantity_girls" + "bookings"."quantity_boys" = "bookings"."quantity_total"),
@@ -206,7 +189,7 @@ CREATE TABLE "event_settings" (
 	"booking_fee_label" text,
 	"capacity" integer,
 	"max_group_size" integer DEFAULT 10 NOT NULL,
-	"hold_minutes" integer DEFAULT 15 NOT NULL,
+	"hold_minutes" integer DEFAULT 30 NOT NULL,
 	"sales_open_at" timestamp with time zone,
 	"sales_close_at" timestamp with time zone,
 	"offer_expires_at" timestamp with time zone,
@@ -217,6 +200,9 @@ CREATE TABLE "event_settings" (
 	"organiser_email" text,
 	"organiser_instagram" text,
 	"whatsapp_group_url" text,
+	"upi_id" text,
+	"upi_payee_name" text,
+	"payment_qr_path" text,
 	"drinks_details" text,
 	"terms_text" text,
 	"privacy_text" text,
@@ -234,7 +220,7 @@ CREATE TABLE "event_settings" (
 	CONSTRAINT "event_settings_fee_nonneg" CHECK ("event_settings"."booking_fee_paise" >= 0),
 	CONSTRAINT "event_settings_capacity_nonneg" CHECK ("event_settings"."capacity" IS NULL OR "event_settings"."capacity" >= 0),
 	CONSTRAINT "event_settings_group_positive" CHECK ("event_settings"."max_group_size" >= 1),
-	CONSTRAINT "event_settings_hold_positive" CHECK ("event_settings"."hold_minutes" BETWEEN 5 AND 60)
+	CONSTRAINT "event_settings_hold_positive" CHECK ("event_settings"."hold_minutes" BETWEEN 5 AND 180)
 );
 --> statement-breakpoint
 CREATE TABLE "inventory_holds" (
@@ -251,26 +237,21 @@ CREATE TABLE "inventory_holds" (
 	CONSTRAINT "inventory_holds_qty_positive" CHECK ("inventory_holds"."quantity" >= 1)
 );
 --> statement-breakpoint
-CREATE TABLE "payment_attempts" (
+CREATE TABLE "payment_proofs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"booking_id" uuid NOT NULL,
-	"provider" text NOT NULL,
-	"gateway_order_id" text NOT NULL,
-	"gateway_payment_id" text NOT NULL,
-	"status" "payment_status" NOT NULL,
+	"user_id" text NOT NULL,
+	"utr" text NOT NULL,
+	"payer_name" text,
 	"amount_paise" integer NOT NULL,
-	"currency" text NOT NULL,
-	"amount_refunded_paise" integer DEFAULT 0 NOT NULL,
-	"method" text,
-	"error_code" text,
-	"error_description" text,
-	"is_extra_capture" boolean DEFAULT false NOT NULL,
-	"captured_at" timestamp with time zone,
-	"last_source" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "payment_attempts_gateway_payment_id_unique" UNIQUE("gateway_payment_id"),
-	CONSTRAINT "payment_attempts_amounts_nonneg" CHECK ("payment_attempts"."amount_paise" >= 0 AND "payment_attempts"."amount_refunded_paise" >= 0)
+	"image" "bytea" NOT NULL,
+	"content_type" text NOT NULL,
+	"size_bytes" integer NOT NULL,
+	"sha256" text NOT NULL,
+	"submitted_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_proofs_booking_id_unique" UNIQUE("booking_id"),
+	CONSTRAINT "payment_proofs_amount_positive" CHECK ("payment_proofs"."amount_paise" > 0),
+	CONSTRAINT "payment_proofs_utr_format" CHECK ("payment_proofs"."utr" ~ '^[A-Z0-9]{6,35}$')
 );
 --> statement-breakpoint
 CREATE TABLE "rate_limit" (
@@ -351,24 +332,12 @@ CREATE TABLE "verification" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "webhook_events" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"provider" text NOT NULL,
-	"event_id" text NOT NULL,
-	"event_type" text NOT NULL,
-	"payload" jsonb NOT NULL,
-	"received_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"processed_at" timestamp with time zone,
-	"attempts" integer DEFAULT 0 NOT NULL,
-	"last_error" text
-);
---> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "booking_events" ADD CONSTRAINT "booking_events_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "booking_exceptions" ADD CONSTRAINT "booking_exceptions_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_coupon_id_coupons_id_fk" FOREIGN KEY ("coupon_id") REFERENCES "public"."coupons"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_referral_code_id_referral_codes_id_fk" FOREIGN KEY ("referral_code_id") REFERENCES "public"."referral_codes"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "bookings" ADD CONSTRAINT "bookings_reviewed_by_user_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "check_in_events" ADD CONSTRAINT "check_in_events_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "check_in_events" ADD CONSTRAINT "check_in_events_staff_user_id_user_id_fk" FOREIGN KEY ("staff_user_id") REFERENCES "public"."user"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "coupon_reservations" ADD CONSTRAINT "coupon_reservations_coupon_id_coupons_id_fk" FOREIGN KEY ("coupon_id") REFERENCES "public"."coupons"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -376,7 +345,8 @@ ALTER TABLE "coupon_reservations" ADD CONSTRAINT "coupon_reservations_booking_id
 ALTER TABLE "coupon_reservations" ADD CONSTRAINT "coupon_reservations_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "email_outbox" ADD CONSTRAINT "email_outbox_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "inventory_holds" ADD CONSTRAINT "inventory_holds_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_proofs" ADD CONSTRAINT "payment_proofs_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_proofs" ADD CONSTRAINT "payment_proofs_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "referral_codes" ADD CONSTRAINT "referral_codes_owner_user_id_user_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tickets" ADD CONSTRAINT "tickets_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -387,7 +357,6 @@ CREATE INDEX "account_user_id_idx" ON "account" USING btree ("user_id");--> stat
 CREATE INDEX "audit_events_created_idx" ON "audit_events" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "audit_events_target_idx" ON "audit_events" USING btree ("target_type","target_id");--> statement-breakpoint
 CREATE INDEX "booking_events_booking_idx" ON "booking_events" USING btree ("booking_id","created_at");--> statement-breakpoint
-CREATE INDEX "booking_exceptions_open_idx" ON "booking_exceptions" USING btree ("resolved_at","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "bookings_user_idempotency_uq" ON "bookings" USING btree ("user_id","idempotency_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "bookings_one_pending_per_user_uq" ON "bookings" USING btree ("user_id") WHERE "bookings"."status" = 'pending_payment';--> statement-breakpoint
 CREATE INDEX "bookings_status_idx" ON "bookings" USING btree ("status");--> statement-breakpoint
@@ -399,12 +368,10 @@ CREATE INDEX "coupon_reservations_coupon_idx" ON "coupon_reservations" USING btr
 CREATE INDEX "coupon_reservations_user_idx" ON "coupon_reservations" USING btree ("coupon_id","user_id","status");--> statement-breakpoint
 CREATE INDEX "email_outbox_due_idx" ON "email_outbox" USING btree ("status","next_attempt_at");--> statement-breakpoint
 CREATE INDEX "inventory_holds_active_idx" ON "inventory_holds" USING btree ("status","expires_at");--> statement-breakpoint
-CREATE INDEX "payment_attempts_booking_idx" ON "payment_attempts" USING btree ("booking_id");--> statement-breakpoint
-CREATE INDEX "payment_attempts_order_idx" ON "payment_attempts" USING btree ("gateway_order_id");--> statement-breakpoint
+CREATE INDEX "payment_proofs_utr_idx" ON "payment_proofs" USING btree ("utr");--> statement-breakpoint
+CREATE INDEX "payment_proofs_sha_idx" ON "payment_proofs" USING btree ("sha256");--> statement-breakpoint
 CREATE INDEX "session_user_id_idx" ON "session" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "tickets_booking_index_uq" ON "tickets" USING btree ("booking_id","ticket_index");--> statement-breakpoint
 CREATE INDEX "tickets_user_idx" ON "tickets" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_role_idx" ON "user" USING btree ("role");--> statement-breakpoint
-CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");--> statement-breakpoint
-CREATE UNIQUE INDEX "webhook_events_provider_event_uq" ON "webhook_events" USING btree ("provider","event_id");--> statement-breakpoint
-CREATE INDEX "webhook_events_unprocessed_idx" ON "webhook_events" USING btree ("processed_at");
+CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");

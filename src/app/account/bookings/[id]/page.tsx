@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { BookingLiveStatus } from "@/components/account/booking-live-status";
+import { PaymentPanel } from "@/components/account/payment-panel";
 import { PrintButton } from "@/components/account/print-button";
 import { OrderSummary } from "@/components/booking/order-summary";
 import { PageShell } from "@/components/site/page-shell";
@@ -16,6 +17,7 @@ import { tickets } from "@/lib/db/schema";
 import { ticketSigningSecret } from "@/lib/env";
 import { eventTimingLabel, formatDateTimeIST, formatEventDate } from "@/lib/format";
 import { formatINR } from "@/lib/money";
+import { upiDetails, upiPayLink } from "@/lib/payments/upi";
 import { getPublicEvent } from "@/lib/public-settings";
 import { formatManualCode, qrPayloadFor } from "@/lib/tickets/token";
 
@@ -31,6 +33,7 @@ export default async function BookingPage(props: PageProps<"/account/bookings/[i
   if (!view) notFound();
   const event = await getPublicEvent();
   const s = event.settings;
+  const upi = upiDetails(s);
 
   const passes =
     view.status === "confirmed"
@@ -70,13 +73,35 @@ export default async function BookingPage(props: PageProps<"/account/bookings/[i
         <p className="eyebrow">Booking {view.reference}</p>
         {view.isDemo && (
           <p className="mt-3 inline-block rounded-full border border-dashed border-danger/60 px-3 py-1 text-xs font-bold text-danger">
-            DEMO BOOKING — no real payment; passes not valid for entry
+            DEMO BOOKING — passes not valid for entry
           </p>
         )}
       </header>
 
       <div className="print:hidden">
         <BookingLiveStatus initial={view} celebrate={sp.from === "checkout"} />
+        {(view.status === "pending_payment" || view.status === "expired") && (
+          <div className="mt-6">
+            <PaymentPanel
+              bookingId={view.id}
+              reference={view.reference}
+              totalPaise={view.totalPaise}
+              holdExpiresAt={view.holdExpiresAt}
+              expired={view.status === "expired" || new Date(view.holdExpiresAt) <= new Date()}
+              upi={{
+                ...upi,
+                payLink: upi.upiId
+                  ? upiPayLink({
+                      upiId: upi.upiId,
+                      payeeName: upi.payeeName,
+                      amountPaise: view.totalPaise,
+                      reference: view.reference,
+                    })
+                  : null,
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {view.status === "confirmed" && (

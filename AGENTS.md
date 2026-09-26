@@ -11,7 +11,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # Project notes (Freshers’ Party 2026)
 
 - Read `README.md`, `docs/ARCHITECTURE.md` and `docs/PAYMENTS.md` before changing booking/payment code.
-- Invariants: money is integer paise; only `applyPaymentUpdate` confirms bookings; never add an admin “mark paid”;
+- Invariants: money is integer paise; only `approveBooking` (organiser review of UPI proof) confirms bookings and issues passes;
   never invent event facts (keep them in the `event_settings` row, edited via Admin → Settings).
 - Checks: `npm run lint && npm run typecheck && npm test` (real Postgres via embedded-postgres), `npm run test:e2e`
   (needs `npm run db:local`; uses port 3210).

@@ -30,11 +30,6 @@ const schema = z.object({
     .optional()
     .transform((v) => v !== "false"),
 
-  RAZORPAY_KEY_ID: optionalString,
-  RAZORPAY_KEY_SECRET: optionalString,
-  RAZORPAY_WEBHOOK_SECRET: optionalString,
-  ALLOW_LIVE_PAYMENTS: boolish,
-
   DEMO_MODE: boolish,
 
   EMAIL_PROVIDER: z.enum(["resend", "console", "none"]).optional(),
@@ -116,4 +111,14 @@ export function ticketSigningSecret(): string {
 
 export function appOrigin(): string {
   return new URL(env().APP_URL).origin;
+}
+
+/**
+ * DEMO mode (development/preview only): lets you try the whole flow before
+ * capacity and policies are configured. Demo bookings and passes are flagged
+ * and rejected at the door. Never active in production.
+ */
+export function isDemoMode(): boolean {
+  const e = env();
+  return Boolean(e.DEMO_MODE) && !e.isProduction;
 }

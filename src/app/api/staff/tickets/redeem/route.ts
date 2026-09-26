@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { requireRoleApi } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { isDemoMode } from "@/lib/env";
 import { assertSameOrigin, errorResponse, json, readJson, tooManyRequests } from "@/lib/http";
-import { resolvePaymentMode } from "@/lib/payments";
 import { rateLimit } from "@/lib/rate-limit";
 import { redeemTicket } from "@/lib/tickets/checkin";
 
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const result = await redeemTicket(db, {
       staffUserId: staff.id,
       ticketId,
-      demoAllowed: resolvePaymentMode().kind === "demo",
+      demoAllowed: isDemoMode(),
     });
     return json({ result });
   } catch (e) {

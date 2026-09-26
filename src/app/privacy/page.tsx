@@ -32,8 +32,9 @@ export default async function PrivacyPage() {
               coupon/referral codes and your confirmations — to issue passes and manage entry.
             </li>
             <li>
-              <strong className="text-ivory">Payments:</strong> handled by Razorpay. We store payment/order IDs, amounts and
-              status — never card numbers or UPI credentials.
+              <strong className="text-ivory">Payments:</strong> you pay the organisers directly by UPI. We store the payment
+              screenshot you upload (metadata stripped), the transaction ID and the amount so organisers can verify it — never UPI
+              PINs or bank credentials. Screenshots are visible only to you and the organisers.
             </li>
             <li>
               <strong className="text-ivory">Security:</strong> an HTTP-only session cookie keeps you signed in; IP addresses are

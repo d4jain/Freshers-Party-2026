@@ -6,10 +6,10 @@ import {
   EVENT_DAY_END_ISO,
   EVENT_FACTS,
   PRICING_DEFAULTS,
+  UPI_DEFAULTS,
 } from "@/config/event";
 import type { Queryable } from "@/lib/db";
 import { eventSettings, type EventSettingsRow } from "@/lib/db/schema";
-import type { PaymentMode } from "@/lib/payments/types";
 
 export type EventSettings = EventSettingsRow;
 
@@ -31,6 +31,9 @@ export function defaultSettingsValues() {
     maxGroupSize: DEFAULT_MAX_GROUP_SIZE,
     holdMinutes: DEFAULT_HOLD_MINUTES,
     whatsappGroupUrl: EVENT_FACTS.whatsappGroupUrl,
+    upiId: UPI_DEFAULTS.upiId,
+    upiPayeeName: UPI_DEFAULTS.payeeName,
+    paymentQrPath: UPI_DEFAULTS.qrPath,
   } satisfies typeof eventSettings.$inferInsert;
 }
 
@@ -99,7 +102,7 @@ export type SalesState =
   { open: true; isDemo: boolean; capacity: number } | { open: false; reason: string; code: SalesClosedCode; setupHint?: string };
 
 export type SalesClosedCode =
-  | "PAYMENTS_DISABLED"
+  | "PAYMENT_DETAILS_MISSING"
   | "SALES_DISABLED"
   | "CAPACITY_NOT_SET"
   | "POLICIES_NOT_APPROVED"
@@ -107,11 +110,16 @@ export type SalesClosedCode =
   | "CLOSED"
   | "EVENT_OVER";
 
-export function evaluateSales(settings: EventSettings, mode: PaymentMode, now: Date): SalesState {
-  if (mode.kind === "disabled") {
-    return { open: false, code: "PAYMENTS_DISABLED", reason: mode.reason, setupHint: mode.setupHint };
+export function evaluateSales(settings: EventSettings, opts: { demo: boolean }, now: Date): SalesState {
+  const isDemo = opts.demo;
+  if (!settings.upiId && !settings.paymentQrPath) {
+    return {
+      open: false,
+      code: "PAYMENT_DETAILS_MISSING",
+      reason: "Online booking isn’t live yet.",
+      setupHint: "Organisers: add the UPI ID and payment QR in Admin → Settings.",
+    };
   }
-  const isDemo = mode.kind === "demo";
   if (now >= eventEndsAt(settings)) return { open: false, code: "EVENT_OVER", reason: "This event has ended." };
   if (settings.salesOpenAt && now < settings.salesOpenAt) {
     return { open: false, code: "NOT_OPEN_YET", reason: "Bookings haven’t opened yet." };

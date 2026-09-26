@@ -1,119 +1,70 @@
-# Payments, holds and booking states
+# Payments: manual UPI with organiser review
 
-This document is the reference for how money, places and passes move. The code
-lives in `src/lib/booking/*` and `src/lib/payments/*`; tests in
-`tests/integration/{checkout,payments,checkin}.test.ts`.
+There is **no payment gateway**. Buyers pay the organiser's UPI QR, upload a
+screenshot and the UPI transaction ID, and an organiser approves the booking
+after finding the payment in their UPI account. Only an approval confirms a
+booking and issues passes.
 
-## Principles
-
-- **Server is the source of truth.** Price, discount, fees, eligibility
-  acknowledgement versions, capacity and payment status are computed or
-  verified on the server. Client-submitted totals are ignored.
-- **All money is integer paise, currency INR.** ₹2,199 = `219900`.
-- **Only a captured Razorpay payment for the booking's own order, for exactly
-  the stored amount in INR, can confirm a booking.** Client callbacks and
-  authorised-but-uncaptured payments never issue passes.
-- **One confirmation service** (`applyPaymentUpdate`) handles the checkout
-  callback, webhooks, reconciliation, demo simulation and organiser retries.
-- **Exactly once.** Confirmation runs inside one transaction holding the
-  inventory lock (`event_settings` row) and the booking row lock; passes have a
-  unique `(booking_id, ticket_index)`; emails have a unique dedupe key.
-- **Never silently discard a paid order.** Anything paid that can't be
-  confirmed goes to `needs_review` plus an exception row.
+Code: `src/lib/booking/{checkout,payment-proof,review,reconcile,status}.ts`,
+`src/lib/payments/upi.ts`. Tests: `tests/integration/{checkout,review,checkin}.test.ts`.
 
 ## Flow
 
-1. `POST /api/bookings` validates auth, same-origin, rate limit, input (Zod),
-   verified email, sales window, group size and policy version.
-2. In one transaction: lock inventory → idempotency lookup by
-   `(user_id, idempotency_key)` → reuse or supersede the user's pending booking →
-   lock coupon row and check usage limits → check capacity
-   (`confirmed places + live holds`) → insert booking, hold and coupon
-   reservation. **No network calls inside the transaction.**
-3. After commit, create the Razorpay order for `total_paise` and store it with
-   compare-and-set (`gateway_order_id IS NULL`). Retries reuse the same booking;
-   a losing concurrent order is never returned to the browser.
-4. The browser receives only: key id, order id, trusted amount, prefill,
-   reference and hold expiry.
-5. Bottle animation (~1 s, skipped for reduced motion) → Razorpay Checkout.
-6. `POST /api/bookings/:id/verify`: ownership check → signature verified with
-   **the order id from our DB** → payment fetched from Razorpay → confirmation
-   service.
-7. `POST /api/payments/razorpay/webhook`: HMAC over the raw body with the
-   separate webhook secret → event stored by `x-razorpay-event-id` (dedupe) →
-   confirmation service. Refund events re-fetch the payment for cumulative
-   refund amounts.
-8. `GET /api/bookings/:id` (polled by the booking page) occasionally re-fetches
-   the order's payments from Razorpay, so a missed webhook or closed tab still
-   resolves.
-9. `GET /api/cron/reconcile` (scheduled) expires stale holds, recovers missed
-   captures, retries stored webhooks and sends queued email.
+1. **Book** (`POST /api/bookings`) — the server validates everything
+   (auth, same-origin, rate limit, quantities, acknowledgements, sales window,
+   group size, policy version, coupon/referral), recomputes the price, and in one
+   transaction **holds the places** (and a coupon use) for `hold_minutes`
+   (default 30). Idempotent per checkout attempt; one pending booking per user.
+2. **Pay** — the booking page shows the QR (`paymentQrPath`), the exact amount,
+   payee name, UPI ID and the booking reference to add as the note. On phones a
+   `upi://pay` button pre-fills the amount and reference.
+3. **Upload proof** (`POST /api/bookings/:id/proof`, multipart) — screenshot
+   (≤ 8 MB, must decode as an image; re-encoded to JPEG with metadata stripped)
+   + UTR (6–35 letters/digits) + optional payer name. The booking becomes
+   **`in_review`** and its places stay reserved until an organiser decides.
+   A transaction ID already used on another non-rejected booking is refused.
+   Proof for a lapsed hold is accepted only if places are still available.
+4. **Review** (Admin → Payment review) — the organiser sees the screenshot,
+   amount due, UTR, booker, and warnings if the same UTR or the exact same
+   screenshot appears on another booking. They tick “I found this payment”
+   and **Approve** (→ `confirmed`, passes issued, email queued) or **Reject**
+   with a reason shown to the buyer (→ `rejected`, places and coupon released).
+5. **Cancel** (booking page, confirmed only) — after refunding via UPI
+   yourself, cancel with a reason: all passes are voided at the door.
 
-## Booking states (`bookings.status`)
+Housekeeping (`/api/cron/reconcile`, or `npm run reconcile:once`): expires
+`pending_payment` bookings whose hold passed without proof (database time)
+and sends queued email.
+
+## Booking states
 
 | From | To | Trigger |
 |---|---|---|
-| — | `pending_payment` | Checkout created; places + coupon use held |
-| `pending_payment` | `confirmed` | Captured payment, hold live (or capacity rechecked) |
-| `pending_payment` | `expired` | Hold passed with no captured payment (server time), or superseded by a newer request |
-| `pending_payment` / `expired` | `needs_review` | Captured but amount/currency mismatch, or late capture with no places left, or partial refund before confirmation |
-| `expired` | `confirmed` | Late capture and capacity still available (rechecked under lock) |
-| `needs_review` | `confirmed` | Organiser “Retry confirmation” (capacity rechecked; needs captured payment) |
-| `needs_review` / `confirmed` | `refunded` | Full refund synced from Razorpay (passes voided) |
+| — | `pending_payment` | Booking created; places + coupon held for the hold time |
+| `pending_payment` | `in_review` | Buyer uploads proof |
+| `pending_payment` | `expired` | Hold passed with no proof, or superseded by a newer booking |
+| `expired` | `in_review` | Late proof, only if places are still free |
+| `in_review` | `confirmed` | Organiser approves (passes created once, email sent) |
+| `in_review` / `pending_payment` | `rejected` | Organiser rejects with a reason |
+| `confirmed` | `cancelled` | Organiser cancels (e.g. after a manual refund); passes void |
 
-Never: `confirmed → expired/pending`, and failure events never change booking
-state. There is no admin action that marks a booking as paid.
+Guarantees: approval runs under the inventory lock and the booking row lock;
+concurrent approvals produce exactly one set of passes (unique
+`(booking_id, ticket_index)`); there is no path that confirms a booking
+without proof and an organiser decision; every approve/reject/cancel is in
+the audit log.
 
-## Payment attempt states (`payment_attempts.status`)
+## Emails (outbox, retried with backoff)
 
-Monotonic merge, so late or duplicate events can't downgrade:
-`created < failed < authorized < captured < partially_refunded < refunded`.
-A second captured payment on a confirmed booking is flagged
-`is_extra_capture` and raises an `extra_capture` exception (refund it in
-Razorpay; the refund webhook auto-resolves the exception).
+`proof_submitted_admin` (to the organiser email, if set) · `booking_confirmation`
+· `booking_rejected` · `booking_cancelled`. A message whose booking state has
+since changed is dropped rather than sent.
 
-## Holds (`inventory_holds.status`)
+## Limits of manual verification
 
-`active → consumed` (confirmed) or `active → released` (expired, superseded,
-needs review, refunded). A hold counts toward capacity only while
-`status = 'active' AND expires_at > now()` (database time), so capacity is
-never “released twice” — it's computed, not decremented. Pending bookings with
-an **authorised** payment get a 30-minute grace before expiry.
-
-## Coupon reservations
-
-`held → committed` on confirmation; `held → released` when the booking expires.
-Limits (`max_redemptions`, `per_user_limit`) count committed + live held
-reservations under the coupon row lock. A late capture after release honours
-the discounted price the customer already paid and flags `coupon_over_limit`
-if it now exceeds the limit.
-
-## Exceptions queue (`booking_exceptions`)
-
-`capacity_unavailable_after_capture`, `amount_mismatch`, `extra_capture`,
-`partial_refund`, `coupon_over_limit`, `capture_on_refunded_booking`,
-`unknown_order`. Organisers resolve them in **Admin → Exceptions** after acting
-in the Razorpay Dashboard; each resolution needs a note and is audited.
-
-## Refunds
-
-Refunds are made **manually in the Razorpay Dashboard** (no local “refund”
-button). Subscribe the webhook to `refund.created`, `refund.processed`,
-`refund.failed`: the app re-fetches the payment and
-- full refund → booking `refunded`, all passes void, rejected at the door;
-- partial refund → `partial_refund` exception; void the right pass(es) from the
-  booking page (audited).
-
-## Capture settings
-
-The app never captures payments itself. Keep **automatic capture** on in the
-Razorpay Dashboard (Account & Settings → Payment capture). Authorised payments
-are shown as “Payment received; confirming your booking” and resolved by the
-webhook/reconciler once captured.
-
-## Demo mode
-
-Only when `DEMO_MODE=true`, no Razorpay keys, and not production. A dashed
-“DEMO checkout” dialog simulates capture/failure through the real
-confirmation service. Demo bookings/passes are flagged, labelled “DEMO”, and
-rejected at the door unless the check-in server itself is in demo mode.
+- The organiser must actually check each payment in the UPI app — the site
+  can't verify screenshots. Match **amount + UTR** (and the note, if present).
+- Refunds are done by the organiser outside the site; then cancel the booking.
+- Demo mode (`DEMO_MODE=true`, never in production) only relaxes the
+  capacity/policy gate; payments are still manual. Demo passes are rejected at
+  the door in non-demo environments.

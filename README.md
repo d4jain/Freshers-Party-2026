@@ -7,12 +7,11 @@ Noida**. ₹2,199 per person (was ₹2,500), same price for everyone. Unlimited
 Food + Unlimited Drinks · Party | Dance | Games.
 
 Students discover the party, create an account, book for themselves or a group,
-pay with Razorpay, and get one QR pass per person. Organisers get a protected
+pay by UPI and upload proof, and get one QR pass per person once an organiser verifies the payment. Organisers get a protected
 dashboard for bookings, exceptions, coupons, referrals, settings, CSV export and
 an audit trail; door staff get a camera + manual-code check-in page.
 
-> Status: **not deployed, no real charges.** Runs locally in a clearly labelled
-> DEMO mode or against Razorpay **test** keys. See “Missing launch inputs”.
+> Status: **not deployed.** Payments are manual UPI (no gateway). See “Missing launch inputs”.
 
 ---
 
@@ -36,11 +35,13 @@ Then:
 
 1. Sign up at `/signup`. The verification link is printed in the dev-server
    console (console email provider) — open it to verify.
-2. Book at `/book`. In DEMO mode a dashed “Demo checkout” dialog simulates
-   success/failure through the real confirmation service. Demo passes say
-   **DEMO** and are rejected at the door in non-demo environments.
+2. Book at `/book` → you land on the payment page with the UPI QR and exact
+   amount → upload any screenshot + a 12-digit transaction ID → booking shows
+   **In review**. In DEMO mode bookings/passes say **DEMO** and are rejected at
+   the door in non-demo environments.
 3. Make yourself an organiser: `npm run admin:grant -- --email you@example.com --role admin`
-   (then log in again) → `/admin`. Door staff: `--role staff` → `/staff/check-in`.
+   (then log in again) → `/admin/review` to approve it → passes appear.
+   Door staff: `--role staff` → `/staff/check-in`.
 
 In DEMO mode an unset capacity falls back to a labelled demo capacity of 150;
 live sales stay closed until capacity and approved policies are configured.
@@ -77,39 +78,38 @@ buttons, and uses a labelled Google Maps *search* link until a pin is verified.
 
 ## How payments work
 
-Short version (full state tables in [`docs/PAYMENTS.md`](docs/PAYMENTS.md)):
+Short version (full state table in [`docs/PAYMENTS.md`](docs/PAYMENTS.md)):
 
-1. Server validates everything, then **atomically holds places** (and a coupon
-   use) and creates a pending booking — idempotent per checkout attempt.
-2. Server creates the Razorpay order for the stored amount (outside the DB
-   transaction) and returns only key id, order id, amount and prefill.
-3. Bottle-pop animation (~1 s, skipped for reduced motion) → Razorpay Checkout.
-4. The callback, webhook (HMAC on raw body, deduped by event id) and
-   reconciliation all feed **one** confirmation service. Only a **captured**
-   payment for the exact amount confirms a booking and issues passes — once.
-5. Late payments recheck capacity; paid-but-unconfirmable bookings go to
-   **Admin → Exceptions**, never silently dropped. Refunds are done in the
-   Razorpay Dashboard and synced by webhook (passes void).
+1. Server validates everything and **atomically holds the places** (and any
+   coupon use) for 30 minutes — idempotent per checkout attempt.
+2. Bottle-pop animation (~1 s, skipped for reduced motion) → payment page with the
+   organiser's **UPI QR**, exact amount, payee name, UPI ID and the booking
+   reference to add as the note (plus a `upi://` button on phones).
+3. Buyer uploads the **payment screenshot + UPI transaction ID (UTR)** → booking
+   is **In review** under My bookings; places stay reserved.
+4. Organiser checks their UPI app in **Admin → Payment review** and **approves**
+   (confirmed, QR passes issued, email sent) or **rejects** with a reason
+   (places released). Duplicate UTRs/screenshots are flagged or refused.
+5. Refunds happen outside the site; the organiser then cancels the booking
+   (passes void).
 
-Razorpay test setup, webhooks, scheduler, email and the **test → live**
-checklist: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+Scheduler, email and deployment: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 Architecture and security model: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Tests
 
 | Suite | What it covers | Kind |
 |---|---|---|
-| `tests/unit` (29) | Pricing & coupons (paise, caps, expiry, min rules, no zero totals), validation (phone, email, quantities, acknowledgements, tampered fields ignored, referral vs coupon), signatures, QR tokens, cron auth | Unit |
-| `tests/integration/checkout` (16) | Idempotent duplicate clicks, gateway outage retry, supersede, price-change snapshot, sales window/group size/policy version/email verification, **concurrent last places**, hold expiry without double release, **final coupon redemption race**, per-user limits, referral attribution & self-referral | Real Postgres |
-| `tests/integration/payments` (20) | Authorised ≠ captured, exactly-once passes under callback/webhook/reconcile races, amount mismatch, stale failures never downgrade, extra captures, late capture (confirm vs needs-review), coupon over-limit, bad/duplicate/out-of-order webhooks, backlog retry, missed-webhook reconciliation, authorised grace, gateway outage, full/partial refunds, email outbox retry | Real Postgres + **mock** Razorpay |
+| `tests/unit` (26) | Pricing & coupons (paise, caps, expiry, min rules, no zero totals), validation (phone, email, quantities, acknowledgements, tampered fields ignored, referral vs coupon), signatures, QR tokens, cron auth | Unit |
+| `tests/integration/checkout` (14) | Idempotent duplicate clicks, supersede, price-change snapshot, sales window/group size/policy version/email verification, **concurrent last places**, hold expiry without double release, **final coupon redemption race**, per-user limits, referral attribution & self-referral | Real Postgres |
+| `tests/integration/review` (17) | Proof upload → in review (image re-encoded, places kept), organiser alert email, invalid UTR / non-image / oversize, cross-user upload blocked, **duplicate UTR refused** (allowed again after rejection), late proof only if places remain, approval issues passes **exactly once under concurrent approvals**, no approval without proof, rejection releases places + coupon, cancellation voids passes, unpaid holds expire, email outbox retry, UPI link/UTR helpers | Real Postgres |
 | `tests/integration/checkin` (5) | QR/manual lookup, forged codes, **concurrent repeat check-in** (exactly one admit), void and demo passes | Real Postgres |
 | `tests/integration/auth-and-routes` (9) | Signup/login via Better Auth, duplicate email, invalid phone/referral, role not self-assignable, **expired reset token**, protected routes (401), CSRF (403), **cross-user booking access (404)**, forged callback rejected, staff route forbidden | Real Postgres + route handlers |
-| `tests/e2e` (Playwright, 10 specs × 2 viewports) | Landing facts & honest placeholders, no overflow (360/1440 and every signed-in page), keyboard FAQ, countdown, gallery failure fallback, venue search link, reduced motion, cursor glitter toggle, **full demo journey** (draft kept through signup → pay → dismiss → retry same booking → passes → staff admit → “Already checked in”), admin access control | Browser, DEMO mode |
+| `tests/e2e` (Playwright, 10 specs × 2 viewports) | Landing facts & honest placeholders, no overflow (360/1440 and every signed-in page), keyboard FAQ, countdown, gallery failure fallback, venue search link, reduced motion, cursor glitter toggle, **full journey** (draft kept through signup → UPI payment page → proof upload → In review → organiser approves → passes → staff admit → “Already checked in”), admin access control | Browser, DEMO mode |
 
-Mocked vs real: payment tests use an in-memory Razorpay stand-in with the real
-HMAC algorithms. **Real Razorpay test-mode checkout has not been exercised**
-(no test keys were available). See the handoff checklist in
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#4-razorpay-test-mode-first).
+Not automatable: whether a screenshot reflects a real payment — that's the
+organiser's check in their UPI app. Everything around it (state changes,
+duplicates, capacity, passes) is tested against a real Postgres.
 
 ## Tooling status
 
@@ -135,5 +135,6 @@ Details: [`docs/DEV_TOOLING.md`](docs/DEV_TOOLING.md). Asset sources and licence
 - **The event poster** (not found in the project) and any **approved venue/previous-event media**; optional hero video
 - **Haikei SVG exports** (see decor spec)
 - Secrets: Neon URLs, `BETTER_AUTH_SECRET`, `TICKET_SIGNING_SECRET`, `CRON_SECRET`,
-  Razorpay **test** keys + webhook secret, Resend key + verified sender domain
-- Razorpay **KYC activation** before any live payments, and your explicit go-ahead
+  Resend key + verified sender domain
+- Confirm the **UPI QR / ID** (currently the supplied QR: ABHIRAKSHIT GAUR, `63968583011@axl`) and set an
+  **organiser email** to get “proof submitted” alerts

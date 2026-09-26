@@ -1,14 +1,14 @@
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createCheckout } from "@/lib/booking/checkout";
-import { applyPaymentUpdate } from "@/lib/booking/confirm";
+import { submitPaymentProof } from "@/lib/booking/payment-proof";
+import { approveBooking } from "@/lib/booking/review";
 import type { DB } from "@/lib/db";
 import { auditEvents, checkInEvents, tickets } from "@/lib/db/schema";
-import { makeDemoPayment } from "@/lib/payments/demo";
 import { lookupTicket, redeemTicket, voidTicket } from "@/lib/tickets/checkin";
 import { formatManualCode, newPublicId, qrPayloadFor } from "@/lib/tickets/token";
 import { createTestDatabase } from "../helpers/db";
-import { bookingInput, createUser, FakeRazorpay, openSales, RAZORPAY_TEST_MODE } from "../helpers/fixtures";
+import { bookingInput, createUser, nextUtr, openSales, screenshotPng } from "../helpers/fixtures";
 
 const SECRET = "checkin-test-secret";
 let db: DB;
@@ -24,15 +24,20 @@ beforeEach(async () => {
   await openSales(db);
 });
 
+async function payAndApprove(userId: string, bookingId: string) {
+  await submitPaymentProof(db, { userId, bookingId, utr: nextUtr(), file: await screenshotPng() });
+  const organiser = await createUser(db, { role: "admin" });
+  await approveBooking(db, { adminId: organiser.id, bookingId });
+}
+
 async function confirmedTickets(qty = 2) {
-  const gateway = new FakeRazorpay();
   const u = await createUser(db, { name: "Kabir Mehta" });
   const c = await createCheckout(
-    { db, gateway, mode: RAZORPAY_TEST_MODE, requireVerifiedEmail: true },
+    { db, demo: false, requireVerifiedEmail: true },
     u.id,
     bookingInput({ quantityTotal: qty, quantityGirls: 0, quantityBoys: qty, bookerName: "Kabir Mehta" }),
   );
-  await applyPaymentUpdate(db, gateway.pay(c.order!.id, "captured"), "callback");
+  await payAndApprove(u.id, c.bookingId);
   return db.select().from(tickets).where(eq(tickets.bookingId, c.bookingId));
 }
 
@@ -83,13 +88,8 @@ describe("check-in", () => {
 
   it("rejects demo passes unless demo mode is active", async () => {
     const u = await createUser(db);
-    const demoGateway = new (await import("@/lib/payments/demo")).DemoGateway();
-    const c = await createCheckout(
-      { db, gateway: demoGateway, mode: { kind: "demo" }, requireVerifiedEmail: true },
-      u.id,
-      bookingInput(),
-    );
-    await applyPaymentUpdate(db, makeDemoPayment(c.order!.id, c.order!.amountPaise, "captured"), "demo");
+    const c = await createCheckout({ db, demo: true, requireVerifiedEmail: true }, u.id, bookingInput());
+    await payAndApprove(u.id, c.bookingId);
     const [t] = await db.select().from(tickets).where(eq(tickets.bookingId, c.bookingId));
     expect(t!.isDemo).toBe(true);
     const staff = await createUser(db, { role: "staff" });

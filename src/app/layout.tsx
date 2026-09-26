@@ -45,7 +45,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en-IN" className={`${bodoni.variable} ${manrope.variable} ${pinyon.variable}`}>
+    <html lang="en-IN" data-scroll-behavior="smooth" className={`${bodoni.variable} ${manrope.variable} ${pinyon.variable}`}>
       <body className="min-h-dvh antialiased">
         <noscript>
           {/* Without JavaScript, show content that would otherwise fade in. */}

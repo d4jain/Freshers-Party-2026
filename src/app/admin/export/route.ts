@@ -1,23 +1,27 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { recordAudit } from "@/lib/audit";
 import { requireRoleApi } from "@/lib/auth/session";
 import { toCsv } from "@/lib/csv";
 import { getDb } from "@/lib/db";
-import { bookings } from "@/lib/db/schema";
+import { bookings, paymentProofs } from "@/lib/db/schema";
 import { errorResponse } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Operational CSV for organisers. Includes booking contacts, quantities,
- * amounts and gateway ids. Never includes passwords, sessions, reset tokens,
+ * amounts and UPI transaction ids. Never includes passwords, sessions, reset tokens,
  * payment secrets or QR tokens. Cells are formula-injection escaped.
  */
 export async function GET(req: Request) {
   try {
     const admin = await requireRoleApi(req, ["admin"]);
     const db = getDb();
-    const rows = await db.select().from(bookings).orderBy(desc(bookings.createdAt));
+    const rows = await db
+      .select({ b: bookings, utr: paymentProofs.utr, payerName: paymentProofs.payerName })
+      .from(bookings)
+      .leftJoin(paymentProofs, eq(paymentProofs.bookingId, bookings.id))
+      .orderBy(desc(bookings.createdAt));
     const csv = toCsv(
       [
         "reference",
@@ -38,10 +42,13 @@ export async function GET(req: Request) {
         "coupon",
         "referral",
         "referral_source",
-        "gateway_order_id",
-        "captured_payment_id",
+        "upi_transaction_id",
+        "payer_name",
+        "proof_submitted_at_utc",
+        "reviewed_at_utc",
+        "review_note",
       ],
-      rows.map((b) => [
+      rows.map(({ b, utr, payerName }) => [
         b.reference,
         b.status,
         b.isDemo ? "yes" : "no",
@@ -60,8 +67,11 @@ export async function GET(req: Request) {
         b.couponCode,
         b.referralCode,
         b.referralSource,
-        b.gatewayOrderId,
-        b.capturedPaymentId,
+        utr,
+        payerName,
+        b.paymentSubmittedAt,
+        b.reviewedAt,
+        b.reviewNote,
       ]),
     );
     await recordAudit(db, { actorUserId: admin.id, action: "bookings.export_csv", details: { rows: rows.length } });

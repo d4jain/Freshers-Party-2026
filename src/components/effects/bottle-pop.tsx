@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 
 /**
  * Decorative "sparkling bottle" pop that plays AFTER the server has created
- * (or safely reused) a payment order and BEFORE Razorpay Checkout opens.
+ * (or safely reused) a payment order and BEFORE the UPI payment page opens.
  * ~1s: tilt → cork pop → gold burst → shimmer. A hard timeout guarantees
  * `onDone` fires even if an animation event never arrives. It never claims
  * the booking is confirmed.
@@ -138,8 +138,8 @@ export function BottlePop({ onDone }: Props) {
           </motion.g>
         </motion.svg>
       </div>
-      <p className="mt-6 font-display text-2xl text-ivory">Opening secure checkout…</p>
-      <p className="mt-2 text-sm text-muted">Your places are held while you pay.</p>
+      <p className="mt-6 font-display text-2xl text-ivory">Preparing your payment…</p>
+      <p className="mt-2 text-sm text-muted">Your places are held while you pay and upload proof.</p>
     </div>
   );
 }

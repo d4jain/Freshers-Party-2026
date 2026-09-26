@@ -1,12 +1,18 @@
 import { asc, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resendConfirmation, retryConfirmation, syncWithGateway, voidTicketAction, resolveException } from "@/app/admin/actions";
+import {
+  approveBookingAction,
+  cancelBookingAction,
+  rejectBookingAction,
+  resendConfirmation,
+  voidTicketAction,
+} from "@/app/admin/actions";
 import { StatusChip } from "@/components/account/status-chip";
 import { ActionForm } from "@/components/admin/action-form";
 import { OrderSummary } from "@/components/booking/order-summary";
 import { getDb } from "@/lib/db";
-import { bookingEvents, bookingExceptions, bookings, emailOutbox, paymentAttempts, tickets } from "@/lib/db/schema";
+import { bookingEvents, bookings, emailOutbox, paymentProofs, tickets } from "@/lib/db/schema";
 import { formatDateTimeIST } from "@/lib/format";
 import { formatINR } from "@/lib/money";
 import type { PriceBreakdown } from "@/lib/pricing";
@@ -26,11 +32,19 @@ export default async function AdminBookingDetail(props: PageProps<"/admin/bookin
   const db = getDb();
   const [b] = await db.select().from(bookings).where(eq(bookings.id, id)).limit(1);
   if (!b) notFound();
-  const [attempts, ts, events, exceptions, emails] = await Promise.all([
-    db.select().from(paymentAttempts).where(eq(paymentAttempts.bookingId, id)).orderBy(asc(paymentAttempts.createdAt)),
+  const [proofs, ts, events, emails] = await Promise.all([
+    db
+      .select({
+        utr: paymentProofs.utr,
+        payerName: paymentProofs.payerName,
+        amountPaise: paymentProofs.amountPaise,
+        submittedAt: paymentProofs.submittedAt,
+        sizeBytes: paymentProofs.sizeBytes,
+      })
+      .from(paymentProofs)
+      .where(eq(paymentProofs.bookingId, id)),
     db.select().from(tickets).where(eq(tickets.bookingId, id)).orderBy(asc(tickets.ticketIndex)),
     db.select().from(bookingEvents).where(eq(bookingEvents.bookingId, id)).orderBy(desc(bookingEvents.createdAt)),
-    db.select().from(bookingExceptions).where(eq(bookingExceptions.bookingId, id)).orderBy(desc(bookingExceptions.createdAt)),
     db.select().from(emailOutbox).where(eq(emailOutbox.bookingId, id)).orderBy(desc(emailOutbox.createdAt)),
   ]);
 
@@ -73,8 +87,9 @@ export default async function AdminBookingDetail(props: PageProps<"/admin/bookin
             <Row label="Created">{formatDateTimeIST(b.createdAt)}</Row>
             <Row label="Hold expires">{formatDateTimeIST(b.holdExpiresAt)}</Row>
             {b.confirmedAt && <Row label="Confirmed">{formatDateTimeIST(b.confirmedAt)}</Row>}
-            <Row label="Gateway order">{b.gatewayOrderId ?? "—"}</Row>
-            <Row label="Primary payment">{b.capturedPaymentId ?? "—"}</Row>
+            {b.paymentSubmittedAt && <Row label="Proof submitted">{formatDateTimeIST(b.paymentSubmittedAt)}</Row>}
+            {b.reviewedAt && <Row label="Reviewed">{formatDateTimeIST(b.reviewedAt)}</Row>}
+            {b.reviewNote && <Row label="Review note">{b.reviewNote}</Row>}
           </dl>
         </section>
         <section className="card p-5" aria-labelledby="pricing">
@@ -88,81 +103,98 @@ export default async function AdminBookingDetail(props: PageProps<"/admin/bookin
         </section>
       </div>
 
-      <section className="card space-y-4 p-5" aria-labelledby="actions">
-        <h2 id="actions" className="font-display text-2xl text-ivory">
-          Actions
+      <section className="card space-y-4 p-5" aria-labelledby="payment">
+        <h2 id="payment" className="font-display text-2xl text-ivory">
+          Payment proof
         </h2>
-        <p className="text-sm text-muted">
-          Refunds are made in the Razorpay Dashboard; the webhook then syncs them here and voids passes. There is no “mark as
-          paid” — only a captured Razorpay payment can confirm a booking.
-        </p>
+        {proofs[0] ? (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,18rem)_1fr]">
+            <a
+              href={`/api/bookings/${b.id}/proof`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block overflow-hidden rounded-xl border border-gold/20"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- private, authenticated image */}
+              <img
+                src={`/api/bookings/${b.id}/proof`}
+                alt={`Payment screenshot for ${b.reference}`}
+                className="max-h-96 w-full object-contain"
+              />
+            </a>
+            <dl>
+              <Row label="UTR">{<span className="font-mono">{proofs[0].utr}</span>}</Row>
+              <Row label="Paid by">{proofs[0].payerName ?? "—"}</Row>
+              <Row label="Amount due">{formatINR(proofs[0].amountPaise)}</Row>
+              <Row label="Submitted">{formatDateTimeIST(proofs[0].submittedAt)}</Row>
+            </dl>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">No payment proof submitted yet.</p>
+        )}
         <div className="flex flex-wrap gap-6">
-          {b.paymentProvider === "razorpay" && b.gatewayOrderId && (
-            <ActionForm action={syncWithGateway} submitLabel="Sync with Razorpay" submitClassName="btn-ghost !min-h-11">
+          {b.status === "in_review" && (
+            <ActionForm action={approveBookingAction} submitLabel="Approve & issue passes" className="space-y-2">
               <input type="hidden" name="bookingId" value={b.id} />
+              <label className="flex items-start gap-2 text-sm text-mist">
+                <input type="checkbox" name="verified" required className="mt-0.5 h-5 w-5 accent-[#d7b777]" />I found this payment
+                in the UPI account.
+              </label>
+            </ActionForm>
+          )}
+          {(b.status === "in_review" || b.status === "pending_payment") && (
+            <ActionForm
+              action={rejectBookingAction}
+              submitLabel="Reject"
+              submitClassName="btn-ghost !min-h-11"
+              className="space-y-2"
+              confirm="Reject this booking? Places are released."
+            >
+              <input type="hidden" name="bookingId" value={b.id} />
+              <label className="sr-only" htmlFor="reject-reason">
+                Reason shown to the buyer
+              </label>
+              <input
+                id="reject-reason"
+                name="reason"
+                required
+                minLength={5}
+                placeholder="Reason shown to the buyer"
+                className="field !min-h-10 text-sm"
+              />
             </ActionForm>
           )}
           {b.status === "confirmed" && (
-            <ActionForm action={resendConfirmation} submitLabel="Resend confirmation email" submitClassName="btn-ghost !min-h-11">
-              <input type="hidden" name="bookingId" value={b.id} />
-            </ActionForm>
+            <>
+              <ActionForm
+                action={resendConfirmation}
+                submitLabel="Resend confirmation email"
+                submitClassName="btn-ghost !min-h-11"
+              >
+                <input type="hidden" name="bookingId" value={b.id} />
+              </ActionForm>
+              <ActionForm
+                action={cancelBookingAction}
+                submitLabel="Cancel booking"
+                submitClassName="btn-ghost !min-h-11"
+                className="space-y-2"
+                confirm="Cancel this booking? All its passes become void. Refund the buyer yourself via UPI first."
+              >
+                <input type="hidden" name="bookingId" value={b.id} />
+                <label className="sr-only" htmlFor="cancel-reason">
+                  Reason
+                </label>
+                <input
+                  id="cancel-reason"
+                  name="reason"
+                  required
+                  minLength={5}
+                  placeholder="Reason (e.g. refunded via UPI)"
+                  className="field !min-h-10 text-sm"
+                />
+              </ActionForm>
+            </>
           )}
-          {b.status === "needs_review" && b.capturedPaymentId && (
-            <ActionForm
-              action={retryConfirmation}
-              submitLabel="Retry confirmation (capacity rechecked)"
-              confirm="Re-run confirmation using the captured payment? Passes are issued only if places are available."
-            >
-              <input type="hidden" name="bookingId" value={b.id} />
-            </ActionForm>
-          )}
-        </div>
-      </section>
-
-      <section aria-labelledby="payments">
-        <h2 id="payments" className="mb-3 font-display text-2xl text-ivory">
-          Payment attempts
-        </h2>
-        <div className="overflow-x-auto rounded-2xl border border-ivory/10">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="bg-ink-2 text-xs tracking-wider text-muted uppercase">
-              <tr>
-                <th className="px-4 py-2">Payment id</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2 text-right">Amount</th>
-                <th className="px-4 py-2 text-right">Refunded</th>
-                <th className="px-4 py-2">Method</th>
-                <th className="px-4 py-2">Last source</th>
-                <th className="px-4 py-2">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ivory/5">
-              {attempts.map((a) => (
-                <tr key={a.id}>
-                  <td className="px-4 py-2 font-mono text-xs">
-                    {a.gatewayPaymentId}
-                    {a.isExtraCapture && <span className="ml-2 font-sans font-bold text-danger">EXTRA</span>}
-                  </td>
-                  <td className="px-4 py-2">
-                    {a.status}
-                    {a.errorDescription ? ` — ${a.errorDescription}` : ""}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatINR(a.amountPaise)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatINR(a.amountRefundedPaise)}</td>
-                  <td className="px-4 py-2">{a.method ?? "—"}</td>
-                  <td className="px-4 py-2">{a.lastSource}</td>
-                  <td className="px-4 py-2 text-xs text-muted">{formatDateTimeIST(a.updatedAt)}</td>
-                </tr>
-              ))}
-              {attempts.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-muted">
-                    No payment attempts recorded.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </section>
 
@@ -214,49 +246,6 @@ export default async function AdminBookingDetail(props: PageProps<"/admin/bookin
           </ul>
         )}
       </section>
-
-      {exceptions.length > 0 && (
-        <section aria-labelledby="exc">
-          <h2 id="exc" className="mb-3 font-display text-2xl text-ivory">
-            Exceptions
-          </h2>
-          <ul className="space-y-3">
-            {exceptions.map((e) => (
-              <li key={e.id} className="card p-4 text-sm">
-                <p className="font-semibold text-ivory">{e.kind.replaceAll("_", " ")}</p>
-                <p className="text-xs text-muted">
-                  {formatDateTimeIST(e.createdAt)} · {JSON.stringify(e.details)}
-                </p>
-                {e.resolvedAt ? (
-                  <p className="mt-2 text-success">
-                    Resolved {formatDateTimeIST(e.resolvedAt)} — {e.resolutionNote}
-                  </p>
-                ) : (
-                  <ActionForm
-                    action={resolveException}
-                    submitLabel="Mark resolved"
-                    className="mt-3 space-y-2"
-                    submitClassName="btn-ghost !min-h-10 text-xs"
-                  >
-                    <input type="hidden" name="id" value={e.id} />
-                    <label className="sr-only" htmlFor={`note-${e.id}`}>
-                      Resolution note
-                    </label>
-                    <input
-                      id={`note-${e.id}`}
-                      name="note"
-                      required
-                      minLength={5}
-                      placeholder="What did you do? (e.g. refunded pay_… in Razorpay)"
-                      className="field !min-h-10 text-sm"
-                    />
-                  </ActionForm>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="timeline">

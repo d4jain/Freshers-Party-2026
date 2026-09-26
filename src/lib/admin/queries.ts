@@ -1,6 +1,6 @@
-import { and, desc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import type { Queryable } from "@/lib/db";
-import { auditEvents, bookingExceptions, bookings, coupons, referralCodes } from "@/lib/db/schema";
+import { auditEvents, bookings, coupons, referralCodes } from "@/lib/db/schema";
 import { placesInUse } from "@/lib/settings";
 
 export async function overviewStats(db: Queryable) {
@@ -10,9 +10,12 @@ export async function overviewStats(db: Queryable) {
       confirmed_people: string;
       girls: string;
       boys: string;
+      confirmed_total: string;
+      in_review: string;
+      in_review_total: string;
       pending_bookings: string;
-      needs_review: string;
-      refunded_bookings: string;
+      rejected: string;
+      cancelled: string;
       demo_confirmed: string;
     }>(sql`
       SELECT
@@ -20,20 +23,14 @@ export async function overviewStats(db: Queryable) {
         coalesce(sum(quantity_total) FILTER (WHERE status = 'confirmed' AND NOT is_demo), 0) AS confirmed_people,
         coalesce(sum(quantity_girls) FILTER (WHERE status = 'confirmed' AND NOT is_demo), 0) AS girls,
         coalesce(sum(quantity_boys) FILTER (WHERE status = 'confirmed' AND NOT is_demo), 0) AS boys,
+        coalesce(sum(total_paise) FILTER (WHERE status = 'confirmed' AND NOT is_demo), 0) AS confirmed_total,
+        count(*) FILTER (WHERE status = 'in_review') AS in_review,
+        coalesce(sum(total_paise) FILTER (WHERE status = 'in_review'), 0) AS in_review_total,
         count(*) FILTER (WHERE status = 'pending_payment') AS pending_bookings,
-        count(*) FILTER (WHERE status = 'needs_review') AS needs_review,
-        count(*) FILTER (WHERE status = 'refunded') AS refunded_bookings,
+        count(*) FILTER (WHERE status = 'rejected') AS rejected,
+        count(*) FILTER (WHERE status = 'cancelled') AS cancelled,
         count(*) FILTER (WHERE status = 'confirmed' AND is_demo) AS demo_confirmed
       FROM bookings
-    `)
-  ).rows;
-  const [p] = (
-    await db.execute<{ gross: string; refunded: string; captures: string }>(sql`
-      SELECT
-        coalesce(sum(amount_paise) FILTER (WHERE status IN ('captured','partially_refunded','refunded') AND provider <> 'demo'), 0) AS gross,
-        coalesce(sum(amount_refunded_paise) FILTER (WHERE provider <> 'demo'), 0) AS refunded,
-        count(*) FILTER (WHERE status IN ('captured','partially_refunded','refunded') AND provider <> 'demo') AS captures
-      FROM payment_attempts
     `)
   ).rows;
   const [t] = (
@@ -45,9 +42,8 @@ export async function overviewStats(db: Queryable) {
     `)
   ).rows;
   const [x] = (
-    await db.execute<{ open_exceptions: string; email_failed: string; email_pending: string }>(sql`
+    await db.execute<{ email_failed: string; email_pending: string }>(sql`
       SELECT
-        (SELECT count(*) FROM booking_exceptions WHERE resolved_at IS NULL) AS open_exceptions,
         (SELECT count(*) FROM email_outbox WHERE status = 'failed') AS email_failed,
         (SELECT count(*) FROM email_outbox WHERE status IN ('pending','sending')) AS email_pending
     `)
@@ -59,24 +55,23 @@ export async function overviewStats(db: Queryable) {
     confirmedPeople: n(b?.confirmed_people),
     girls: n(b?.girls),
     boys: n(b?.boys),
+    verifiedTotalPaise: n(b?.confirmed_total),
+    inReview: n(b?.in_review),
+    inReviewTotalPaise: n(b?.in_review_total),
     pendingBookings: n(b?.pending_bookings),
-    needsReview: n(b?.needs_review),
-    refundedBookings: n(b?.refunded_bookings),
+    rejected: n(b?.rejected),
+    cancelled: n(b?.cancelled),
     demoConfirmed: n(b?.demo_confirmed),
-    grossCapturedPaise: n(p?.gross),
-    refundedPaise: n(p?.refunded),
-    captures: n(p?.captures),
     ticketsIssued: n(t?.issued),
     ticketsValid: n(t?.valid),
     checkedIn: n(t?.checked_in),
-    openExceptions: n(x?.open_exceptions),
     emailFailed: n(x?.email_failed),
     emailPending: n(x?.email_pending),
     placesInUse: inUse,
   };
 }
 
-export const BOOKING_STATUSES = ["pending_payment", "confirmed", "expired", "needs_review", "refunded"] as const;
+export const BOOKING_STATUSES = ["pending_payment", "in_review", "confirmed", "rejected", "expired", "cancelled"] as const;
 
 export async function searchBookings(db: Queryable, opts: { q?: string; status?: string; page?: number; pageSize?: number }) {
   const pageSize = opts.pageSize ?? 50;
@@ -94,8 +89,7 @@ export async function searchBookings(db: Queryable, opts: { q?: string; status?:
         ilike(bookings.bookerEmail, like),
         ilike(bookings.bookerPhone, like),
         ilike(bookings.bookerName, like),
-        ilike(bookings.gatewayOrderId, like),
-        ilike(bookings.capturedPaymentId, like),
+        sql`EXISTS (SELECT 1 FROM payment_proofs p WHERE p.booking_id = ${bookings.id} AND p.utr ILIKE ${like})`,
         ilike(bookings.couponCode, like),
         ilike(bookings.referralCode, like),
       )!,
@@ -112,14 +106,43 @@ export async function searchBookings(db: Queryable, opts: { q?: string; status?:
   return { rows: rows.slice(0, pageSize), hasMore: rows.length > pageSize, page };
 }
 
-export async function openExceptions(db: Queryable, includeResolved = false) {
-  return db
-    .select({ e: bookingExceptions, reference: bookings.reference, bookerName: bookings.bookerName, status: bookings.status })
-    .from(bookingExceptions)
-    .leftJoin(bookings, eq(bookings.id, bookingExceptions.bookingId))
-    .where(includeResolved ? undefined : isNull(bookingExceptions.resolvedAt))
-    .orderBy(desc(bookingExceptions.createdAt))
-    .limit(200);
+/**
+ * Bookings waiting for an organiser to verify payment, oldest first, with
+ * duplicate-proof signals (same transaction id or same screenshot elsewhere).
+ */
+export async function reviewQueue(db: Queryable, status: "in_review" | "all_recent" = "in_review") {
+  const filter = status === "in_review" ? sql`b.status = 'in_review'` : sql`p.submitted_at > now() - interval '14 days'`;
+  const rows = await db.execute<{
+    id: string;
+    reference: string;
+    status: string;
+    booker_name: string;
+    booker_phone: string;
+    booker_email: string;
+    quantity_total: number;
+    quantity_girls: number;
+    quantity_boys: number;
+    total_paise: number;
+    coupon_code: string | null;
+    is_demo: boolean;
+    utr: string;
+    payer_name: string | null;
+    proof_amount_paise: number;
+    submitted_at: Date;
+    same_utr: string;
+    same_image: string;
+  }>(sql`
+    SELECT b.id, b.reference, b.status, b.booker_name, b.booker_phone, b.booker_email, b.quantity_total, b.quantity_girls,
+           b.quantity_boys, b.total_paise, b.coupon_code, b.is_demo, p.utr, p.payer_name, p.amount_paise AS proof_amount_paise,
+           p.submitted_at,
+           (SELECT count(*) FROM payment_proofs o WHERE o.utr = p.utr AND o.id <> p.id) AS same_utr,
+           (SELECT count(*) FROM payment_proofs o WHERE o.sha256 = p.sha256 AND o.id <> p.id) AS same_image
+    FROM payment_proofs p JOIN bookings b ON b.id = p.booking_id
+    WHERE ${filter}
+    ORDER BY p.submitted_at ASC
+    LIMIT 200
+  `);
+  return rows.rows.map((r) => ({ ...r, same_utr: Number(r.same_utr), same_image: Number(r.same_image) }));
 }
 
 export async function couponReport(db: Queryable) {

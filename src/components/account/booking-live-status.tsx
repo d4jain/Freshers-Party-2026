@@ -4,15 +4,12 @@ import { LoaderCircle, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useCheckoutRunner } from "@/components/booking/use-checkout";
-import { FormAlert } from "@/components/ui/field";
 import type { BookingStatusView } from "@/lib/booking/status";
-import { useNow, usePrefersReducedMotion } from "@/lib/hooks/client-state";
+import { usePrefersReducedMotion } from "@/lib/hooks/client-state";
 import { StatusChip } from "./status-chip";
 
-const UNRESOLVED = (v: BookingStatusView) =>
-  v.status === "pending_payment" ||
-  (v.status === "expired" && (v.paymentEvidence === "captured" || v.paymentEvidence === "authorized"));
+/** Poll only while an organiser is reviewing the payment. */
+const WAITING = (v: BookingStatusView) => v.status === "in_review";
 
 function Celebration() {
   const reduce = usePrefersReducedMotion();
@@ -52,11 +49,7 @@ export function BookingLiveStatus({ initial, celebrate }: { initial: BookingStat
   const router = useRouter();
   const [view, setView] = useState(initial);
   const [justConfirmed, setJustConfirmed] = useState(false);
-  const [resumeError, setResumeError] = useState<string | null>(null);
-  const [resuming, setResuming] = useState(false);
-  const runner = useCheckoutRunner();
   const tries = useRef(0);
-  const now = useNow(15_000);
 
   // Adopt fresh server data (after router.refresh) without an effect.
   const [prevInitial, setPrevInitial] = useState(initial);
@@ -66,7 +59,7 @@ export function BookingLiveStatus({ initial, celebrate }: { initial: BookingStat
   }
 
   useEffect(() => {
-    if (!UNRESOLVED(view)) return;
+    if (!WAITING(view)) return;
     let stop = false;
     let timer: number;
     const poll = async () => {
@@ -76,106 +69,54 @@ export function BookingLiveStatus({ initial, celebrate }: { initial: BookingStat
         if (res.ok) {
           const body = (await res.json()) as { booking: BookingStatusView };
           if (stop) return;
-          if (body.booking.status !== view.status || body.booking.paymentEvidence !== view.paymentEvidence) {
+          if (body.booking.status !== view.status) {
             setView(body.booking);
-            if (body.booking.status === "confirmed") {
-              setJustConfirmed(true);
-              router.refresh(); // loads passes (server-rendered)
-            }
+            if (body.booking.status === "confirmed") setJustConfirmed(true);
+            router.refresh(); // loads passes (server-rendered)
             return;
           }
         }
       } catch {
         /* offline — keep trying */
       }
-      if (!stop) timer = window.setTimeout(poll, Math.min(15_000, 2_500 + tries.current * 1_000));
+      if (!stop) timer = window.setTimeout(poll, Math.min(60_000, 10_000 + tries.current * 5_000));
     };
-    timer = window.setTimeout(poll, 2_000);
+    timer = window.setTimeout(poll, 10_000);
     return () => {
       stop = true;
       window.clearTimeout(timer);
     };
   }, [view, router]);
 
-  const holdLive = now != null && new Date(view.holdExpiresAt).getTime() > now;
-  const canResume =
-    view.status === "pending_payment" && holdLive && view.paymentEvidence !== "captured" && view.paymentEvidence !== "authorized";
-
-  async function resume() {
-    setResuming(true);
-    setResumeError(null);
-    try {
-      const res = await fetch(`/api/bookings/${view.id}/resume`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        setResumeError(body.error?.message ?? "Couldn’t reopen checkout.");
-        return;
-      }
-      runner.start(body.checkout);
-    } catch {
-      setResumeError("Network problem — nothing was charged. Try again.");
-    } finally {
-      setResuming(false);
-    }
-  }
-
   if (view.status === "confirmed" && (celebrate || justConfirmed)) return <Celebration />;
 
   return (
-    <div className="space-y-4">
-      <div className="card p-6" aria-live="polite">
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusChip status={view.status} />
-          {UNRESOLVED(view) && <LoaderCircle className="h-4 w-4 animate-spin text-gold" aria-label="Checking" />}
-        </div>
-        <p className="display mt-4 text-3xl text-ivory sm:text-4xl">{view.headline}</p>
-        <p className="mt-2 text-mist">{view.detail}</p>
-        {canResume && (
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              className="btn-gold"
-              onClick={() => void resume()}
-              disabled={resuming || runner.phase === "animating" || runner.phase === "open"}
-            >
-              {resuming ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-              Complete payment
-            </button>
-            <span className="text-sm text-muted">
-              Places held until{" "}
-              {new Date(view.holdExpiresAt).toLocaleTimeString("en-IN", {
-                hour: "numeric",
-                minute: "2-digit",
-                timeZone: "Asia/Kolkata",
-              })}{" "}
-              IST
-            </span>
-          </div>
-        )}
-        {UNRESOLVED(view) && !canResume && (
-          <button
-            type="button"
-            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-gold"
-            onClick={() => router.refresh()}
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
-          </button>
-        )}
+    <div className="card p-6" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-3">
+        <StatusChip status={view.status} />
+        {WAITING(view) && <LoaderCircle className="h-4 w-4 animate-spin text-gold" aria-label="Waiting for review" />}
       </div>
-      {resumeError && <FormAlert>{resumeError}</FormAlert>}
-      {runner.paymentNote && <FormAlert tone="info">{runner.paymentNote}</FormAlert>}
-      {runner.phase === "sdk_error" && (
-        <FormAlert>
-          We couldn’t load secure checkout.{" "}
-          <button type="button" className="font-bold underline" onClick={runner.retrySdk}>
-            Retry
-          </button>
-        </FormAlert>
+      <p className="display mt-4 text-3xl text-ivory sm:text-4xl">{view.headline}</p>
+      <p className="mt-2 text-mist">{view.detail}</p>
+      {view.reviewNote && (
+        <p className="mt-4 rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-[#ffd3cb]">
+          Reason: {view.reviewNote}
+        </p>
       )}
-      {runner.overlays}
+      {view.proof && (
+        <p className="mt-4 text-sm text-muted">
+          Transaction ID submitted: <span className="font-mono text-ivory">{view.proof.utr}</span>
+        </p>
+      )}
+      {WAITING(view) && (
+        <button
+          type="button"
+          className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-gold"
+          onClick={() => router.refresh()}
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
+        </button>
+      )}
     </div>
   );
 }

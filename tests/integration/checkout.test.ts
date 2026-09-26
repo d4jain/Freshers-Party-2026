@@ -8,11 +8,10 @@ import { bookings, coupons, couponReservations, eventSettings, inventoryHolds, r
 import { isAppError } from "@/lib/errors";
 import { placesInUse } from "@/lib/settings";
 import { createTestDatabase } from "../helpers/db";
-import { bookingInput, createUser, expireHoldNow, FakeRazorpay, openSales, RAZORPAY_TEST_MODE } from "../helpers/fixtures";
+import { bookingInput, createUser, expireHoldNow, openSales } from "../helpers/fixtures";
 
 let db: DB;
 let cleanup: () => Promise<void>;
-let gateway: FakeRazorpay;
 let deps: CheckoutDeps;
 
 beforeAll(async () => {
@@ -24,8 +23,7 @@ beforeEach(async () => {
   await db.execute(sql`TRUNCATE bookings, coupons, referral_codes, "user" RESTART IDENTITY CASCADE`);
   await db.execute(sql`DELETE FROM event_settings`);
   await openSales(db);
-  gateway = new FakeRazorpay();
-  deps = { db, gateway, mode: RAZORPAY_TEST_MODE, requireVerifiedEmail: true };
+  deps = { db, demo: false, requireVerifiedEmail: true };
 });
 
 async function expectAppError(p: Promise<unknown>, code: string) {
@@ -39,16 +37,14 @@ async function expectAppError(p: Promise<unknown>, code: string) {
 }
 
 describe("checkout creation", () => {
-  it("creates a pending booking with a hold, server-computed amount and one gateway order", async () => {
+  it("creates a pending booking with a hold and a server-computed amount", async () => {
     const u = await createUser(db);
     const res = await createCheckout(deps, u.id, bookingInput({ quantityTotal: 3, quantityGirls: 2, quantityBoys: 1 }));
     expect(res.status).toBe("pending_payment");
-    expect(res.order?.amountPaise).toBe(659_700);
-    expect(res.keyId).toBe("rzp_test_FAKEKEY123");
-    expect(res).not.toHaveProperty("keySecret");
+    expect(res.totalPaise).toBe(659_700);
+    expect(res.isDemo).toBe(false);
     const [b] = await db.select().from(bookings).where(eq(bookings.id, res.bookingId));
     expect(b!.totalPaise).toBe(659_700);
-    expect(b!.gatewayOrderId).toBe(res.order!.id);
     expect(b!.eligibilityAckVersion).toBe("eligibility-v1");
     expect(b!.termsAckPolicyVersion).toBe(1);
     const [hold] = await db.select().from(inventoryHolds).where(eq(inventoryHolds.bookingId, b!.id));
@@ -56,26 +52,14 @@ describe("checkout creation", () => {
     expect(await placesInUse(db)).toBe(3);
   });
 
-  it("is idempotent under duplicate clicks: one booking, one order, one hold", async () => {
+  it("is idempotent under duplicate clicks: one booking, one hold", async () => {
     const u = await createUser(db);
     const input = bookingInput();
     const results = await Promise.all(Array.from({ length: 6 }, () => createCheckout(deps, u.id, input)));
     expect(new Set(results.map((r) => r.bookingId)).size).toBe(1);
-    expect(new Set(results.map((r) => r.order?.id)).size).toBe(1);
     const all = await db.select().from(bookings);
     expect(all).toHaveLength(1);
     expect(await placesInUse(db)).toBe(2);
-  });
-
-  it("recovers from a gateway outage on retry without a second booking", async () => {
-    const u = await createUser(db);
-    const input = bookingInput();
-    gateway.failCreateOrder = true;
-    await expectAppError(createCheckout(deps, u.id, input), "GATEWAY_UNAVAILABLE");
-    gateway.failCreateOrder = false;
-    const res = await createCheckout(deps, u.id, input);
-    expect(res.order).not.toBeNull();
-    expect(await db.select().from(bookings)).toHaveLength(1);
   });
 
   it("reuses an identical pending booking and supersedes a changed one", async () => {
@@ -98,7 +82,7 @@ describe("checkout creation", () => {
       unitPricePaise: 1,
     };
     const res = await createCheckout(deps, u.id, tampered);
-    expect(res.order?.amountPaise).toBe(219_900);
+    expect(res.totalPaise).toBe(219_900);
   });
 
   it("keeps existing bookings' amounts when the price changes later", async () => {
@@ -133,14 +117,6 @@ describe("checkout creation", () => {
     await db.update(eventSettings).set({ salesEnabled: true, capacity: null }).where(eq(eventSettings.id, "main"));
     await expectAppError(createCheckout(deps, u.id, bookingInput()), "SALES_CLOSED");
   });
-
-  it("refuses to take bookings when payments are disabled", async () => {
-    const u = await createUser(db);
-    await expectAppError(
-      createCheckout({ ...deps, gateway: null, mode: { kind: "disabled", reason: "x", setupHint: "y" } }, u.id, bookingInput()),
-      "PAYMENTS_DISABLED",
-    );
-  });
 });
 
 describe("capacity under concurrency", () => {
@@ -172,8 +148,8 @@ describe("capacity under concurrency", () => {
     const second = await reserveBooking(deps, b.id, bookingInput());
     expect(second.booking.status).toBe("pending_payment");
 
-    const r1 = await expireStaleBookings(db, gateway);
-    const r2 = await expireStaleBookings(db, gateway);
+    const r1 = await expireStaleBookings(db);
+    const r2 = await expireStaleBookings(db);
     expect(r1.expired).toBe(1);
     expect(r2.expired).toBe(0);
     expect(await placesInUse(db)).toBe(2);
@@ -186,7 +162,7 @@ describe("coupons", () => {
     const u = await createUser(db);
     const res = await createCheckout(deps, u.id, bookingInput({ couponCode: "FRESH10" }));
     expect(res.breakdown.discountPaise).toBe(43_980);
-    expect(res.order?.amountPaise).toBe(395_820);
+    expect(res.totalPaise).toBe(395_820);
     const [b] = await db.select().from(bookings).where(eq(bookings.id, res.bookingId));
     expect(b!.couponCode).toBe("FRESH10");
   });
@@ -210,7 +186,7 @@ describe("coupons", () => {
     const first = await reserveBooking(deps, u.id, bookingInput({ couponCode: "ONCE" }));
     await expectAppError(reserveBooking(deps, other.id, bookingInput({ couponCode: "ONCE" })), "COUPON_EXHAUSTED");
     await expireHoldNow(db, first.booking.id);
-    await expireStaleBookings(db, gateway);
+    await expireStaleBookings(db);
     const [res] = await db.select().from(couponReservations).where(eq(couponReservations.bookingId, first.booking.id));
     expect(res!.status).toBe("released");
     const second = await reserveBooking(deps, other.id, bookingInput({ couponCode: "ONCE" }));
@@ -237,7 +213,7 @@ describe("referral attribution", () => {
     const buyer = await createUser(db);
     const res = await createCheckout(deps, buyer.id, bookingInput({ referralCode: "OWNER-1" }));
     expect(res.breakdown.discountPaise).toBe(0);
-    expect(res.order?.amountPaise).toBe(439_800);
+    expect(res.totalPaise).toBe(439_800);
     const [b] = await db.select().from(bookings).where(eq(bookings.id, res.bookingId));
     expect(b!.referralCodeId).toBe(ref!.id);
     expect(b!.referralSource).toBe("booking_form");

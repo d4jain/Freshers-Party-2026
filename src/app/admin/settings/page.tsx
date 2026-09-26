@@ -109,7 +109,7 @@ export default async function SettingsPage() {
           />
         </Group>
 
-        <Group title="Pricing & sales" note="Default: no customer surcharge. Razorpay fees are not added to the ticket price.">
+        <Group title="Pricing & sales" note="Default: no customer surcharge.">
           <F label="Ticket price (₹ per person)" name="unitPrice" defaultValue={rupees(s.unitPricePaise)} inputMode="decimal" />
           <F
             label="Previous price for strike-through (₹)"
@@ -132,7 +132,12 @@ export default async function SettingsPage() {
             hint="Required for live sales."
           />
           <F label="Max people per booking" name="maxGroupSize" defaultValue={s.maxGroupSize} inputMode="numeric" />
-          <F label="Hold time (minutes, 5–60)" name="holdMinutes" defaultValue={s.holdMinutes} inputMode="numeric" />
+          <F
+            label="Hold time to pay + upload proof (minutes, 5–180)"
+            name="holdMinutes"
+            defaultValue={s.holdMinutes}
+            inputMode="numeric"
+          />
           <div />
           <F label="Sales open (IST)" name="salesOpenAt" type="datetime-local" defaultValue={dateToIstLocal(s.salesOpenAt)} />
           <F label="Sales close (IST)" name="salesCloseAt" type="datetime-local" defaultValue={dateToIstLocal(s.salesCloseAt)} />
@@ -152,9 +157,39 @@ export default async function SettingsPage() {
           <F label="Organiser name" name="organiserName" defaultValue={s.organiserName} />
           <F label="Phone" name="organiserPhone" defaultValue={s.organiserPhone} inputMode="tel" />
           <F label="WhatsApp number" name="organiserWhatsapp" defaultValue={s.organiserWhatsapp} inputMode="tel" />
-          <F label="Email" name="organiserEmail" defaultValue={s.organiserEmail} inputMode="email" />
+          <F
+            label="Email (also gets “proof submitted” alerts)"
+            name="organiserEmail"
+            defaultValue={s.organiserEmail}
+            inputMode="email"
+          />
           <F label="Instagram handle or URL" name="organiserInstagram" defaultValue={s.organiserInstagram} />
           <F label="WhatsApp group link" name="whatsappGroupUrl" defaultValue={s.whatsappGroupUrl} inputMode="url" />
+        </Group>
+
+        <Group
+          title="UPI payments"
+          note="Buyers pay this QR / UPI ID, then upload a screenshot and transaction ID for you to verify in Payment review."
+        >
+          <F
+            label="UPI ID"
+            name="upiId"
+            defaultValue={s.upiId}
+            hint="Shown at checkout and used for the “Pay in UPI app” button."
+          />
+          <F label="Payee name (as shown in UPI apps)" name="upiPayeeName" defaultValue={s.upiPayeeName} />
+          <F
+            label="Payment QR image"
+            name="paymentQrPath"
+            defaultValue={s.paymentQrPath}
+            hint="A file in public/ (e.g. /media/payment/upi-qr.png) or an https:// URL."
+          />
+          <div className="flex items-end">
+            {s.paymentQrPath && (
+              // eslint-disable-next-line @next/next/no-img-element -- admin preview of a configurable path
+              <img src={s.paymentQrPath} alt="Current payment QR" className="h-32 w-32 rounded-lg bg-white p-1" />
+            )}
+          </div>
         </Group>
 
         <fieldset className="card space-y-4 p-5">

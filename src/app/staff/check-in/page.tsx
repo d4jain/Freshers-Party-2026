@@ -3,14 +3,14 @@ import Link from "next/link";
 import { Wordmark } from "@/components/site/wordmark";
 import { CheckInConsole } from "@/components/staff/check-in-console";
 import { requireRolePage } from "@/lib/auth/session";
-import { resolvePaymentMode } from "@/lib/payments";
+import { isDemoMode } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Door check-in", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default async function CheckInPage() {
   const user = await requireRolePage(["staff", "admin"], "/staff/check-in");
-  const demo = resolvePaymentMode().kind === "demo";
+  const demo = isDemoMode();
   return (
     <div className="min-h-dvh bg-ink">
       <header className="border-b border-gold/15 px-4 py-3 sm:px-6">

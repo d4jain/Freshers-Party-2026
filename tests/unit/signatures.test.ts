@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { isAuthorizedCron } from "@/lib/cron";
-import { mapRazorpayPayment } from "@/lib/payments/razorpay";
-import { hmacSha256Hex, verifyRazorpayCheckoutSignature, verifyRazorpayWebhookSignature } from "@/lib/payments/signature";
 import {
   formatManualCode,
   newManualCode,
@@ -10,35 +8,6 @@ import {
   parseQrPayload,
   qrPayloadFor,
 } from "@/lib/tickets/token";
-
-describe("Razorpay signatures", () => {
-  const secret = "key_secret_123";
-  it("verifies checkout signatures over order_id|payment_id", () => {
-    const sig = hmacSha256Hex(secret, "order_ABC123|pay_XYZ789");
-    expect(verifyRazorpayCheckoutSignature(secret, "order_ABC123", "pay_XYZ789", sig)).toBe(true);
-    expect(verifyRazorpayCheckoutSignature(secret, "order_OTHER1", "pay_XYZ789", sig)).toBe(false);
-    expect(verifyRazorpayCheckoutSignature("wrong", "order_ABC123", "pay_XYZ789", sig)).toBe(false);
-    expect(verifyRazorpayCheckoutSignature(secret, "order_ABC123", "pay_XYZ789", "zz")).toBe(false);
-  });
-  it("verifies webhook signatures against the exact raw body", () => {
-    const body = '{"event":"payment.captured","payload":{}}';
-    const sig = hmacSha256Hex("whsec", body);
-    expect(verifyRazorpayWebhookSignature("whsec", body, sig)).toBe(true);
-    expect(verifyRazorpayWebhookSignature("whsec", body.replace("captured", "failed"), sig)).toBe(false);
-    expect(verifyRazorpayWebhookSignature("whsec", JSON.stringify(JSON.parse(body), null, 2), sig)).toBe(false);
-  });
-});
-
-describe("payment mapping", () => {
-  it("distinguishes authorised, captured and refunded states", () => {
-    const base = { id: "pay_1", order_id: "order_1", amount: 219900, currency: "INR" };
-    expect(mapRazorpayPayment({ ...base, status: "authorized" }).status).toBe("authorized");
-    expect(mapRazorpayPayment({ ...base, status: "captured" }).status).toBe("captured");
-    expect(mapRazorpayPayment({ ...base, status: "captured", amount_refunded: 1000 }).status).toBe("partially_refunded");
-    expect(mapRazorpayPayment({ ...base, status: "refunded", amount_refunded: 219900 }).status).toBe("refunded");
-    expect(mapRazorpayPayment({ ...base, status: "failed" }).status).toBe("failed");
-  });
-});
 
 describe("ticket QR tokens", () => {
   const secret = "ticket-secret";

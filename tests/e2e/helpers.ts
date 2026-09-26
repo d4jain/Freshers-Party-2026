@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { config } from "dotenv";
 import { Pool } from "pg";
+import sharp from "sharp";
 import type { Page } from "@playwright/test";
 
 config({ path: ".env.local", quiet: true });
@@ -49,4 +50,10 @@ export async function login(page: Page, email: string, password = "party-passwor
 
 export async function noHorizontalOverflow(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+}
+
+export function screenshotPng(seed = 0) {
+  return sharp({ create: { width: 60, height: 90, channels: 3, background: { r: (seed * 53) % 256, g: 90, b: 160 } } })
+    .png()
+    .toBuffer();
 }

@@ -1,19 +1,17 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { Queryable } from "@/lib/db";
-import { bookings, paymentAttempts, tickets, type Booking } from "@/lib/db/schema";
+import { bookings, paymentProofs, tickets, type Booking } from "@/lib/db/schema";
 import type { PriceBreakdown } from "@/lib/pricing";
-
-export type PaymentEvidence = "none" | "failed" | "authorized" | "captured" | "refunded";
 
 export type BookingStatusView = {
   id: string;
   reference: string;
   status: Booking["status"];
   isDemo: boolean;
-  provider: string;
   holdExpiresAt: string;
   createdAt: string;
   confirmedAt: string | null;
+  paymentSubmittedAt: string | null;
   quantityTotal: number;
   quantityGirls: number;
   quantityBoys: number;
@@ -21,44 +19,51 @@ export type BookingStatusView = {
   breakdown: PriceBreakdown;
   couponCode: string | null;
   referralCode: string | null;
-  paymentEvidence: PaymentEvidence;
+  /** Shown to the buyer on rejection/cancellation. */
+  reviewNote: string | null;
+  proof: { utr: string; submittedAt: string } | null;
   headline: string;
   detail: string;
   ticketCount: number;
 };
 
-export function describeStatus(status: Booking["status"], evidence: PaymentEvidence, holdLive: boolean) {
+export function describeStatus(status: Booking["status"], holdLive: boolean) {
   switch (status) {
     case "confirmed":
-      return { headline: "You’re on the guest list", detail: "Your passes are ready below." };
-    case "refunded":
-      return { headline: "Booking refunded", detail: "This booking was refunded, so its passes are no longer valid." };
-    case "needs_review":
+      return { headline: "You’re on the guest list", detail: "Your payment was verified. Your passes are ready below." };
+    case "in_review":
       return {
-        headline: "Payment received — under review",
+        headline: "In review",
         detail:
-          "We received a payment but couldn’t confirm this booking automatically. The organisers will review it and contact you. Please don’t pay again.",
+          "We’ve got your payment proof. The organisers will check it against their UPI account and confirm your booking — your passes appear here once approved. Please don’t pay again.",
       };
-    case "expired":
-      return evidence === "captured" || evidence === "authorized"
+    case "pending_payment":
+      return holdLive
         ? {
-            headline: "Payment received; confirming your booking",
-            detail: "This can take a minute. Keep this page open or check back soon.",
+            headline: "Complete your payment",
+            detail: "Pay the exact amount using the QR below, then upload your payment screenshot.",
           }
         : {
             headline: "Hold expired",
-            detail: "No payment was captured before your held places expired. You can start a new booking.",
+            detail:
+              "Your held places have lapsed. If you’ve already paid, upload your proof now — we’ll accept it if places are still available.",
           };
-    case "pending_payment":
-      if (evidence === "captured" || evidence === "authorized") {
-        return { headline: "Payment received; confirming your booking", detail: "This can take a minute. Don’t pay again." };
-      }
-      return holdLive
-        ? {
-            headline: "Checking payment status",
-            detail: "If you haven’t paid yet, you can complete payment while your places are held.",
-          }
-        : { headline: "Checking payment status", detail: "Your hold has passed. We’re making a final check for any payment." };
+    case "expired":
+      return {
+        headline: "Hold expired",
+        detail:
+          "No payment proof was submitted in time. If you’ve already paid, upload your proof below; otherwise start a new booking.",
+      };
+    case "rejected":
+      return {
+        headline: "Payment not verified",
+        detail: "The organisers couldn’t verify this payment, so the booking wasn’t confirmed.",
+      };
+    case "cancelled":
+      return {
+        headline: "Booking cancelled",
+        detail: "This booking was cancelled by the organisers, so its passes are no longer valid.",
+      };
   }
 }
 
@@ -79,34 +84,28 @@ export async function getBookingStatusForUser(
 }
 
 export async function buildStatusView(db: Queryable, b: Booking): Promise<BookingStatusView> {
-  const attempts = await db
-    .select({ status: paymentAttempts.status })
-    .from(paymentAttempts)
-    .where(eq(paymentAttempts.bookingId, b.id))
-    .orderBy(desc(paymentAttempts.updatedAt));
-  let evidence: PaymentEvidence = "none";
-  if (attempts.some((a) => a.status === "refunded")) evidence = "refunded";
-  if (attempts.some((a) => a.status === "captured" || a.status === "partially_refunded")) evidence = "captured";
-  else if (attempts.some((a) => a.status === "authorized")) evidence = "authorized";
-  else if (evidence === "none" && attempts.some((a) => a.status === "failed")) evidence = "failed";
-
+  const [proof] = await db
+    .select({ utr: paymentProofs.utr, submittedAt: paymentProofs.submittedAt })
+    .from(paymentProofs)
+    .where(eq(paymentProofs.bookingId, b.id))
+    .limit(1);
   const ticketRows = await db
     .select({ id: tickets.id })
     .from(tickets)
     .where(eq(tickets.bookingId, b.id))
     .orderBy(asc(tickets.ticketIndex));
   const holdLive = b.holdExpiresAt.getTime() > Date.now();
-  const { headline, detail } = describeStatus(b.status, evidence, holdLive);
+  const { headline, detail } = describeStatus(b.status, holdLive);
 
   return {
     id: b.id,
     reference: b.reference,
     status: b.status,
     isDemo: b.isDemo,
-    provider: b.paymentProvider,
     holdExpiresAt: b.holdExpiresAt.toISOString(),
     createdAt: b.createdAt.toISOString(),
     confirmedAt: b.confirmedAt ? b.confirmedAt.toISOString() : null,
+    paymentSubmittedAt: b.paymentSubmittedAt ? b.paymentSubmittedAt.toISOString() : null,
     quantityTotal: b.quantityTotal,
     quantityGirls: b.quantityGirls,
     quantityBoys: b.quantityBoys,
@@ -114,7 +113,8 @@ export async function buildStatusView(db: Queryable, b: Booking): Promise<Bookin
     breakdown: b.pricingSnapshot as PriceBreakdown,
     couponCode: b.couponCode,
     referralCode: b.referralCode,
-    paymentEvidence: evidence,
+    reviewNote: b.status === "rejected" || b.status === "cancelled" ? b.reviewNote : null,
+    proof: proof ? { utr: proof.utr, submittedAt: proof.submittedAt.toISOString() } : null,
     headline,
     detail,
     ticketCount: ticketRows.length,

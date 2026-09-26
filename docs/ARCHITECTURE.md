@@ -11,7 +11,7 @@
 | Database | PostgreSQL (Neon in production; `embedded-postgres` locally/tests) | PG 18 |
 | ORM / migrations | Drizzle ORM + drizzle-kit, `pg` driver | 0.45.3 / 0.31.11 |
 | Auth | Better Auth (email/password, database sessions, DB rate-limit store) | 1.7.6 |
-| Payments | Razorpay Standard Checkout + Orders/Payments API (`razorpay` SDK) | 2.9.8 |
+| Payments | Manual UPI: organiser QR + uploaded proof, reviewed by organisers (no gateway); `sharp` re-encodes screenshots | 0.35.4 |
 | Validation | Zod | 4.6.5 |
 | Primitives | Radix UI (dialogs), Lucide icons | 1.6.7 / 1.48.0 |
 | QR | `qrcode` (generate), native `BarcodeDetector` → `jsqr` fallback (scan) | 1.5.4 / 1.4.0 |
@@ -31,13 +31,13 @@ src/
     account/              dashboard, booking status + passes
     admin/                organiser dashboard (+ server actions in actions.ts, CSV export)
     staff/check-in/       door scanner
-    api/                  route handlers (auth, bookings, verify, webhook, cron, staff, pass PNG)
+    api/                  route handlers (auth, bookings, proof upload/image, cron, staff, pass PNG)
   components/             UI (site/, booking/, account/, admin/, staff/, effects/, motion-primitives/)
   config/                 confirmed event facts + seed defaults, stock media registry
   lib/
     db/                   Drizzle schema + pooled client
     booking/              checkout (reserve), confirm (single confirmation service), reconcile, status
-    payments/             gateway interface, Razorpay + demo gateways, signatures, webhook handling
+    payments/upi.ts       UPI details, upi:// link, UTR normalisation
     tickets/              QR token signing, check-in
     email/                providers, templates, outbox worker
     auth/                 Better Auth config, session helpers, client
@@ -56,7 +56,8 @@ tests/                    unit, integration (real Postgres), e2e (Playwright)
 - **Price of a booking:** its immutable `pricing_snapshot` + amount columns,
   guarded by CHECK constraints (`subtotal = unit × qty`, `total = subtotal − discount + fees`,
   `total ≥ 100 paise`, currency `INR`).
-- **Payment truth:** Razorpay (fetched server-side), merged monotonically into
+- **Payment truth:** the organiser's approval after checking their UPI account; the
+  proof (screenshot, UTR, amount) is stored in
   `payment_attempts`.
 
 ## Data model (see `src/lib/db/schema.ts`)
@@ -64,13 +65,13 @@ tests/                    unit, integration (real Postgres), e2e (Playwright)
 `user`, `session`, `account`, `verification`, `rate_limit` (Better Auth) ·
 `event_settings` · `referral_codes` · `coupons` · `bookings` · `booking_events`
 (state log) · `inventory_holds` · `coupon_reservations` · `payment_attempts` ·
-`webhook_events` · `booking_exceptions` · `tickets` · `check_in_events` ·
+`payment_proofs` · `tickets` · `check_in_events` ·
 `email_outbox` · `audit_events` · `app_rate_limits`.
 
-Key constraints: unique gateway order/payment ids, `(user_id, idempotency_key)`
+Key constraints: one proof per booking, `(user_id, idempotency_key)`
 unique, one `pending_payment` booking per user (partial unique index), unique
 `(booking_id, ticket_index)`, unique ticket `public_id` and `manual_code`,
-unique webhook `(provider, event_id)`, unique email `dedupe_key`, non-negative
+UTR format check, unique email `dedupe_key`, non-negative
 amount/count checks, coupon/referral code format checks.
 
 All timestamps are `timestamptz` (UTC); the UI formats them in Asia/Kolkata.
@@ -88,13 +89,12 @@ All timestamps are `timestamptz` (UTC); the UI formats them in Asia/Kolkata.
   (other users' bookings return 404).
 - **CSRF:** cookie-authenticated JSON APIs require a same-origin `Origin`
   (or `Sec-Fetch-Site`); server actions use Next's built-in origin check;
-  Better Auth checks `trustedOrigins`. Webhooks use HMAC; cron uses a bearer secret.
+  Better Auth checks `trustedOrigins`. Cron uses a bearer secret. Proof images are served only to the owner and admins, `no-store`.
 - **CORS:** no CORS headers are emitted, so browsers block cross-origin reads.
 - **Rate limits:** Better Auth's DB store for auth endpoints (sign-in 5/min,
   sign-up 5/10 min, reset 3/15 min per IP) and a Postgres fixed-window limiter for
   checkout, preview, verify and check-in. Both are shared across serverless instances.
-- **CSP & headers:** see `next.config.ts` (Razorpay domains allowed for
-  script/frame/connect; `frame-ancestors 'none'`; HSTS in production).
+- **CSP & headers:** see `next.config.ts` (no third-party scripts/frames; `frame-ancestors 'none'`; HSTS in production).
 - **Secrets & PII:** never returned to the browser or written to logs; the
   audit log scrubs keys that look like secrets; CSV export excludes
   passwords, sessions, tokens and QR data and escapes spreadsheet formulas.

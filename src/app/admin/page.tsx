@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { overviewStats } from "@/lib/admin/queries";
 import { getDb } from "@/lib/db";
+import { isDemoMode } from "@/lib/env";
 import { formatDateTimeIST } from "@/lib/format";
 import { formatINR } from "@/lib/money";
 import { effectiveCapacity, getSettings } from "@/lib/settings";
-import { resolvePaymentMode } from "@/lib/payments";
 
 function Tile({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
@@ -19,8 +19,8 @@ function Tile({ label, value, note }: { label: string; value: string; note?: str
 export default async function AdminOverview() {
   const db = getDb();
   const [stats, settings] = await Promise.all([overviewStats(db), getSettings(db)]);
-  const mode = resolvePaymentMode();
-  const capacity = effectiveCapacity(settings, mode.kind === "demo");
+  const demo = isDemoMode();
+  const capacity = effectiveCapacity(settings, demo);
   const pct = capacity ? Math.min(100, Math.round((stats.placesInUse / capacity) * 100)) : null;
   const meterColor = pct == null ? "bg-ivory/20" : pct >= 95 ? "bg-danger" : pct >= 80 ? "bg-gold-bright" : "bg-gold";
 
@@ -38,13 +38,18 @@ export default async function AdminOverview() {
         </a>
       </header>
 
-      {(stats.openExceptions > 0 || stats.needsReview > 0 || stats.emailFailed > 0) && (
-        <div className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-[#ffd3cb]" role="status">
-          <strong>Needs attention:</strong> {stats.openExceptions} open exception(s), {stats.needsReview} booking(s) under review,{" "}
-          {stats.emailFailed} failed email(s).{" "}
-          <Link href="/admin/exceptions" className="font-bold underline">
-            Open the exception queue
+      {stats.inReview > 0 && (
+        <div className="rounded-2xl border border-gold/40 bg-gold/10 p-4 text-sm text-gold-bright" role="status">
+          <strong>{stats.inReview}</strong> payment{stats.inReview === 1 ? "" : "s"} waiting for review (
+          {formatINR(stats.inReviewTotalPaise)}).{" "}
+          <Link href="/admin/review" className="font-bold underline">
+            Open the review queue
           </Link>
+        </div>
+      )}
+      {stats.emailFailed > 0 && (
+        <div className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-[#ffd3cb]" role="status">
+          {stats.emailFailed} email(s) failed to send. Buyers still see their passes in their account.
         </div>
       )}
 
@@ -59,7 +64,7 @@ export default async function AdminOverview() {
           </p>
         </div>
         <div className="rounded-2xl border border-ivory/10 bg-ink-2 p-6">
-          <p className="text-sm text-muted">Capacity in use (confirmed + live holds)</p>
+          <p className="text-sm text-muted">Capacity in use (confirmed + held + in review)</p>
           {capacity != null ? (
             <>
               <p className="mt-2 font-sans text-3xl font-semibold text-ivory">
@@ -77,9 +82,8 @@ export default async function AdminOverview() {
                 <div className={`h-full rounded-full ${meterColor}`} style={{ width: `${pct}%` }} />
               </div>
               <p className="mt-2 text-xs text-muted">
-                {pct}% ·{" "}
-                {mode.kind === "demo" && settings.capacity == null ? "demo capacity (not configured)" : "configured capacity"}
-                {mode.kind === "demo" ? " · includes demo bookings" : ""}
+                {pct}% · {demo && settings.capacity == null ? "demo capacity (not configured)" : "configured capacity"}
+                {demo ? " · includes demo bookings" : ""}
               </p>
             </>
           ) : (
@@ -102,20 +106,28 @@ export default async function AdminOverview() {
           note={`${stats.ticketsValid.toLocaleString("en-IN")} currently valid`}
         />
         <Tile label="Checked in" value={stats.checkedIn.toLocaleString("en-IN")} note="Tickets scanned at the door" />
-        <Tile label="Awaiting payment" value={stats.pendingBookings.toLocaleString("en-IN")} note="Pending bookings with holds" />
         <Tile
-          label="Gross captured"
-          value={formatINR(stats.grossCapturedPaise)}
-          note={`${stats.captures} captured payment(s) — not bank settlements`}
+          label="In review"
+          value={stats.inReview.toLocaleString("en-IN")}
+          note={`${formatINR(stats.inReviewTotalPaise)} to verify`}
         />
-        <Tile label="Refunded" value={formatINR(stats.refundedPaise)} note="Synced from Razorpay" />
-        <Tile label="Under review" value={stats.needsReview.toLocaleString("en-IN")} note="Paid but not auto-confirmed" />
+        <Tile label="Verified payments" value={formatINR(stats.verifiedTotalPaise)} note="Sum of confirmed bookings" />
+        <Tile
+          label="Awaiting payment"
+          value={stats.pendingBookings.toLocaleString("en-IN")}
+          note="Holding places, no proof yet"
+        />
+        <Tile
+          label="Rejected / cancelled"
+          value={`${stats.rejected} / ${stats.cancelled}`}
+          note="Handle any refunds in your UPI app"
+        />
         <Tile label="Emails queued" value={stats.emailPending.toLocaleString("en-IN")} note={`${stats.emailFailed} failed`} />
       </section>
 
       <p className="text-xs text-muted">
-        Gross captured is the sum of captured Razorpay payments, including any extra captures awaiting refund. Settlements to the
-        bank account arrive separately and net of Razorpay fees — check the Razorpay Dashboard.
+        “Verified payments” is what organisers approved after checking their UPI account — reconcile it against your bank
+        statement.
         {stats.demoConfirmed > 0 && ` ${stats.demoConfirmed} demo booking(s) are excluded.`}
       </p>
     </div>

@@ -38,12 +38,22 @@ export const EVENT_FACTS = {
     "Freshers’ Party 2026 is an unofficial, independently organised event. It is not organised, endorsed or sponsored by Bennett University.",
 } as const;
 
+/**
+ * Organiser's UPI payment details, decoded from the supplied QR code
+ * (public/media/payment/upi-qr.png). Editable in Admin → Settings.
+ */
+export const UPI_DEFAULTS = {
+  upiId: "63968583011@axl",
+  payeeName: "ABHIRAKSHIT GAUR",
+  qrPath: "/media/payment/upi-qr.png",
+};
+
 /** Prices are integer paise. ₹2,199 = 219900 paise. */
 export const PRICING_DEFAULTS = {
   currency: "INR" as const,
   unitPricePaise: 219_900,
   compareAtPricePaise: 250_000,
-  /** No customer surcharge by default. Razorpay fees are never added automatically. */
+  /** No customer surcharge by default. */
   bookingFeePaise: 0,
 };
 
@@ -53,8 +63,8 @@ export const PRICING_DEFAULTS = {
  */
 export const DEFAULT_MAX_GROUP_SIZE = 10;
 
-/** How long a pending booking holds its places before release (server time). */
-export const DEFAULT_HOLD_MINUTES = 15;
+/** How long a new booking holds its places while the buyer pays and uploads proof (server time). */
+export const DEFAULT_HOLD_MINUTES = 30;
 
 /** Capacity used only in clearly labelled demo mode when none is configured. */
 export const DEMO_CAPACITY = 150;

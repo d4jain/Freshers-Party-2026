@@ -48,8 +48,7 @@ export default async function BookPage() {
   let setupHint: string | null = null;
   if (!salesOpen && showSetupHint) {
     const { evaluateSales } = await import("@/lib/settings");
-    const { resolvePaymentMode } = await import("@/lib/payments");
-    const state = evaluateSales(s, resolvePaymentMode(), new Date());
+    const state = evaluateSales(s, { demo: event.demo }, new Date());
     setupHint = !state.open ? (state.setupHint ?? null) : null;
     if (event.source === "fallback") setupHint = "The database isn’t reachable, so booking is disabled. Check DATABASE_URL.";
   }
@@ -71,7 +70,7 @@ export default async function BookPage() {
           {pending && (
             <div className="mb-6">
               <FormAlert tone="info">
-                You have a booking waiting for payment ({pending.reference}).{" "}
+                You have a booking waiting for payment proof ({pending.reference}).{" "}
                 <Link href={`/account/bookings/${pending.id}`} className="font-bold text-gold underline underline-offset-4">
                   Continue that payment
                 </Link>{" "}
@@ -100,7 +99,7 @@ export default async function BookPage() {
                 holdMinutes: s.holdMinutes,
               }}
               sales={{ open: salesOpen, message: event.salesMessage, setupHint }}
-              paymentMode={event.paymentMode}
+              demo={event.demo}
               requireVerifiedEmail={e.REQUIRE_EMAIL_VERIFICATION}
             />
           </div>
@@ -128,8 +127,10 @@ export default async function BookPage() {
             <p className="font-semibold text-ivory">How it works</p>
             <ol className="mt-3 list-decimal space-y-2 pl-5">
               <li>Choose your group and review the total.</li>
-              <li>We hold your places for {s.holdMinutes} minutes while you pay securely with Razorpay.</li>
-              <li>Once payment is verified, your passes appear in your account and we email you.</li>
+              <li>
+                Pay the exact amount to our UPI QR within {s.holdMinutes} minutes, then upload the screenshot and transaction ID.
+              </li>
+              <li>The organisers verify your payment; once approved, your passes appear in your account.</li>
             </ol>
           </div>
         </aside>

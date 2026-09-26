@@ -1,19 +1,19 @@
 "use server";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAudit } from "@/lib/audit";
 import { getSessionUser } from "@/lib/auth/session";
-import { applyPaymentUpdate } from "@/lib/booking/confirm";
-import { reconcileBooking } from "@/lib/booking/reconcile";
+import { approveBooking, cancelBooking, rejectBooking } from "@/lib/booking/review";
 import { isValidCodeFormat, normalizeCode } from "@/lib/codes";
 import { getDb } from "@/lib/db";
-import { bookingExceptions, bookings, coupons, eventSettings, paymentAttempts, referralCodes } from "@/lib/db/schema";
+import { bookings, coupons, eventSettings, referralCodes } from "@/lib/db/schema";
 import { enqueueResend, processEmailOutbox } from "@/lib/email/outbox";
 import { env } from "@/lib/env";
 import { istLocalToDate } from "@/lib/format";
-import { getGateway } from "@/lib/payments";
+import { isAppError } from "@/lib/errors";
 import { normalizeIndianMobile } from "@/lib/phone";
 import { getSettings } from "@/lib/settings";
 import { voidTicket } from "@/lib/tickets/checkin";
@@ -83,7 +83,7 @@ export async function saveSettings(_prev: ActionResult, fd: FormData): Promise<A
   if (fee === "invalid") return fail("Booking fee must be an amount in rupees.");
   if (capacity === "invalid") return fail("Capacity must be a whole number.");
   if (maxGroup === "invalid" || maxGroup == null || maxGroup < 1 || maxGroup > 50) return fail("Max group size must be 1–50.");
-  if (hold === "invalid" || hold == null || hold < 5 || hold > 60) return fail("Hold time must be 5–60 minutes.");
+  if (hold === "invalid" || hold == null || hold < 5 || hold > 180) return fail("Hold time must be 5–180 minutes.");
 
   const parseIst = (key: string): Date | null | "invalid" => {
     const v = str(fd, key);
@@ -115,6 +115,15 @@ export async function saveSettings(_prev: ActionResult, fd: FormData): Promise<A
     const v = str(fd, key);
     if (v && !/^https:\/\//.test(v)) return fail(`${key} must start with https://`);
   }
+
+  const upiId = str(fd, "upiId");
+  if (upiId && !/^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/.test(upiId))
+    return fail("UPI ID looks invalid (e.g. name@bank).");
+  const paymentQrPath = str(fd, "paymentQrPath");
+  if (paymentQrPath && !paymentQrPath.startsWith("/") && !paymentQrPath.startsWith("https://")) {
+    return fail("Payment QR must be a /public path (e.g. /media/payment/upi-qr.png) or an https:// URL.");
+  }
+  if (!upiId && !paymentQrPath) return fail("Add a UPI ID or a payment QR — buyers need one to pay.");
 
   let approvedMedia = current.approvedMedia;
   const mediaRaw = str(fd, "approvedMedia");
@@ -166,6 +175,9 @@ export async function saveSettings(_prev: ActionResult, fd: FormData): Promise<A
     organiserEmail,
     organiserInstagram: str(fd, "organiserInstagram"),
     whatsappGroupUrl: str(fd, "whatsappGroupUrl"),
+    upiId: upiId,
+    upiPayeeName: str(fd, "upiPayeeName"),
+    paymentQrPath: paymentQrPath,
     drinksDetails: str(fd, "drinksDetails"),
     termsText,
     privacyText,
@@ -345,107 +357,63 @@ export async function resendConfirmation(_prev: ActionResult, fd: FormData): Pro
     : ok(`Queued and processed (sent: ${res.sent}, failed: ${res.failed}).`);
 }
 
-export async function syncWithGateway(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+/** Payment verified in the organiser's UPI app → confirm + issue passes. */
+export async function approveBookingAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
   const admin = await requireAdmin();
   const id = str(fd, "bookingId");
   if (!id) return fail("Missing booking.");
-  const gateway = getGateway();
-  if (!gateway || gateway.provider !== "razorpay") return fail("Razorpay isn’t configured.");
-  const db = getDb();
+  if (fd.get("verified") !== "on") return fail("Tick the box to confirm you’ve seen this payment in your UPI account.");
+  let result: ActionResult = null;
+  let reference = "";
   try {
-    const results = await reconcileBooking(db, gateway, id);
-    await recordAudit(db, {
-      actorUserId: admin.id,
-      action: "booking.sync_gateway",
-      targetType: "booking",
-      targetId: id,
-      details: { outcomes: results.map((r) => r.outcome) },
-    });
+    const r = await approveBooking(getDb(), { adminId: admin.id, bookingId: id, note: str(fd, "note") });
+    revalidatePath("/admin/review");
     revalidatePath(`/admin/bookings/${id}`);
-    return ok(
-      results.length
-        ? `Synced ${results.length} payment(s): ${results.map((r) => r.outcome).join(", ")}.`
-        : "No payments found for this order.",
-    );
-  } catch {
-    return fail("Couldn’t reach Razorpay. Try again.");
+    const res = await processEmailOutbox(getDb(), { appUrl: env().APP_URL, onlyBookingId: id, limit: 2 });
+    const mail = "skipped" in res ? " (no email provider configured — the buyer sees passes in their account)" : "";
+    result = r.outcome === "already_confirmed" ? ok("Already confirmed.") : ok(`Confirmed — passes issued${mail}.`);
+    reference = r.booking.reference;
+  } catch (e) {
+    return fail(isAppError(e) ? e.message : "Couldn’t approve. Try again.");
   }
+  // From the queue the card disappears, so report back via the URL.
+  if (fd.get("returnTo") === "/admin/review") redirect(`/admin/review?done=${encodeURIComponent(reference)}&result=approved`);
+  return result;
 }
 
-/**
- * Re-runs the normal confirmation (with capacity check) for a booking in
- * review, using the payment as reported by Razorpay. This can never confirm
- * a booking without a captured payment for its exact amount.
- */
-export async function retryConfirmation(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+export async function rejectBookingAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
   const admin = await requireAdmin();
   const id = str(fd, "bookingId");
+  const reason = str(fd, "reason");
   if (!id) return fail("Missing booking.");
-  const db = getDb();
-  const [b] = await db.select().from(bookings).where(eq(bookings.id, id)).limit(1);
-  if (!b || b.status !== "needs_review" || !b.capturedPaymentId)
-    return fail("Only bookings under review with a captured payment can be retried.");
-  let payment;
-  if (b.paymentProvider === "razorpay") {
-    const gateway = getGateway();
-    if (!gateway || gateway.provider !== "razorpay") return fail("Razorpay isn’t configured.");
-    try {
-      payment = await gateway.fetchPayment(b.capturedPaymentId);
-    } catch {
-      return fail("Couldn’t fetch the payment from Razorpay.");
-    }
-  } else {
-    const [a] = await db.select().from(paymentAttempts).where(eq(paymentAttempts.gatewayPaymentId, b.capturedPaymentId)).limit(1);
-    if (!a) return fail("No payment record.");
-    payment = {
-      id: a.gatewayPaymentId,
-      orderId: a.gatewayOrderId,
-      amountPaise: a.amountPaise,
-      currency: a.currency,
-      status: a.status,
-      amountRefundedPaise: a.amountRefundedPaise,
-      method: a.method,
-      errorCode: a.errorCode,
-      errorDescription: a.errorDescription,
-      capturedAt: a.capturedAt,
-    };
+  if (!reason || reason.length < 5) return fail("Give the buyer a short reason (they will see it).");
+  try {
+    await rejectBooking(getDb(), { adminId: admin.id, bookingId: id, reason });
+    revalidatePath("/admin/review");
+    revalidatePath(`/admin/bookings/${id}`);
+    await processEmailOutbox(getDb(), { appUrl: env().APP_URL, onlyBookingId: id, limit: 2 });
+  } catch (e) {
+    return fail(isAppError(e) ? e.message : "Couldn’t reject. Try again.");
   }
-  const r = await applyPaymentUpdate(db, payment, "admin_retry");
-  await recordAudit(db, {
-    actorUserId: admin.id,
-    action: "booking.retry_confirmation",
-    targetType: "booking",
-    targetId: id,
-    details: { outcome: r.outcome },
-  });
-  revalidatePath(`/admin/bookings/${id}`);
-  return r.outcome === "confirmed"
-    ? ok("Confirmed and passes issued.")
-    : fail(`Not confirmed (${r.outcome}). Resolve capacity or refund in Razorpay.`);
+  if (fd.get("returnTo") === "/admin/review")
+    redirect(`/admin/review?done=${encodeURIComponent(str(fd, "reference") ?? "")}&result=rejected`);
+  return ok("Rejected. Places released; the buyer can see the reason.");
 }
 
-export async function resolveException(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+export async function cancelBookingAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
   const admin = await requireAdmin();
-  const id = str(fd, "id");
-  const note = str(fd, "note");
-  if (!id || !note || note.length < 5) return fail("Add a short resolution note (what you did, e.g. refunded in Razorpay).");
-  const db = getDb();
-  const [e] = await db
-    .update(bookingExceptions)
-    .set({ resolvedAt: new Date(), resolvedBy: admin.id, resolutionNote: note.slice(0, 500) })
-    .where(and(eq(bookingExceptions.id, id), isNull(bookingExceptions.resolvedAt)))
-    .returning();
-  if (!e) return fail("Already resolved.");
-  await recordAudit(db, {
-    actorUserId: admin.id,
-    action: "exception.resolve",
-    targetType: "booking_exception",
-    targetId: id,
-    details: { kind: e.kind, note },
-  });
-  revalidatePath("/admin/exceptions");
-  if (e.bookingId) revalidatePath(`/admin/bookings/${e.bookingId}`);
-  return ok("Marked resolved.");
+  const id = str(fd, "bookingId");
+  const reason = str(fd, "reason");
+  if (!id) return fail("Missing booking.");
+  if (!reason || reason.length < 5) return fail("Give a short reason (e.g. refunded via UPI on 30 Sep).");
+  try {
+    await cancelBooking(getDb(), { adminId: admin.id, bookingId: id, reason });
+    revalidatePath(`/admin/bookings/${id}`);
+    await processEmailOutbox(getDb(), { appUrl: env().APP_URL, onlyBookingId: id, limit: 2 });
+    return ok("Cancelled. All passes are void.");
+  } catch (e) {
+    return fail(isAppError(e) ? e.message : "Couldn’t cancel. Try again.");
+  }
 }
 
 export async function voidTicketAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {

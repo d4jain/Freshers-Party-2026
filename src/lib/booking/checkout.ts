@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { ELIGIBILITY_ACK_TEXT, ELIGIBILITY_ACK_VERSION } from "@/config/event";
 import { generateBookingReference } from "@/lib/codes";
 import type { DB, Tx } from "@/lib/db";
@@ -13,7 +13,6 @@ import {
   type Booking,
 } from "@/lib/db/schema";
 import { AppError } from "@/lib/errors";
-import type { PaymentGateway, PaymentMode } from "@/lib/payments/types";
 import { priceBooking, type PriceBreakdown } from "@/lib/pricing";
 import { evaluateSales, lockSettingsForUpdate, placesInUse } from "@/lib/settings";
 import type { BookingRequest } from "@/lib/validation";
@@ -21,24 +20,22 @@ import { logBookingEvent } from "./events";
 
 export type CheckoutDeps = {
   db: DB;
-  gateway: PaymentGateway | null;
-  mode: PaymentMode;
+  /** Demo mode (dev/preview only): sales open before capacity/policies are set; bookings flagged demo. */
+  demo: boolean;
   requireVerifiedEmail: boolean;
   now?: () => Date;
 };
 
+/** What the browser gets back: enough to show the payment step, nothing secret. */
 export type CheckoutPayload = {
   bookingId: string;
   reference: string;
   status: Booking["status"];
-  provider: "razorpay" | "demo";
   isDemo: boolean;
   reused: boolean;
-  keyId: string | null;
-  order: { id: string; amountPaise: number; currency: "INR" } | null;
+  totalPaise: number;
   holdExpiresAt: string;
   breakdown: PriceBreakdown;
-  prefill: { name: string; email: string; contact: string };
 };
 
 function fingerprint(parts: Record<string, unknown>): string {
@@ -73,7 +70,7 @@ export async function reserveBooking(
   userId: string,
   input: BookingRequest,
 ): Promise<{ booking: Booking; breakdown: PriceBreakdown; reused: boolean }> {
-  const { db, mode } = deps;
+  const { db } = deps;
   const now = deps.now?.() ?? new Date();
 
   const [account] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1);
@@ -81,16 +78,6 @@ export async function reserveBooking(
   if (deps.requireVerifiedEmail && !account.emailVerified) {
     throw new AppError("EMAIL_NOT_VERIFIED", "Please verify your email address before booking.", 403);
   }
-  if (!deps.gateway || mode.kind === "disabled") {
-    throw new AppError(
-      "PAYMENTS_DISABLED",
-      mode.kind === "disabled" ? mode.reason : "Online checkout isn’t available.",
-      503,
-      mode.kind === "disabled" ? { setupHint: mode.setupHint } : undefined,
-    );
-  }
-  const provider = deps.gateway.provider;
-
   return db.transaction(async (tx) => {
     const settings = await lockSettingsForUpdate(tx);
 
@@ -104,7 +91,7 @@ export async function reserveBooking(
       return { booking: existing, breakdown: existing.pricingSnapshot as PriceBreakdown, reused: true };
     }
 
-    const sales = evaluateSales(settings, mode, now);
+    const sales = evaluateSales(settings, { demo: deps.demo }, now);
     if (!sales.open) {
       throw new AppError("SALES_CLOSED", sales.reason, 409, { salesCode: sales.code, setupHint: sales.setupHint });
     }
@@ -157,7 +144,7 @@ export async function reserveBooking(
       booker: [input.bookerName, input.bookerPhone, input.bookerEmail],
       price: [breakdown.unitPricePaise, breakdown.feesPaise, breakdown.totalPaise],
       policy: settings.policyVersion,
-      provider,
+      demo: deps.demo,
     });
 
     // One pending booking per user: reuse it if identical and still held, else supersede it.
@@ -238,8 +225,7 @@ export async function reserveBooking(
         eligibilityAckText: ELIGIBILITY_ACK_TEXT,
         termsAckAt: now,
         termsAckPolicyVersion: settings.policyVersion,
-        paymentProvider: provider,
-        isDemo: provider === "demo",
+        isDemo: deps.demo,
         holdExpiresAt: sql`now() + make_interval(mins => ${settings.holdMinutes})` as unknown as Date,
       })
       .returning();
@@ -269,69 +255,19 @@ export async function reserveBooking(
   });
 }
 
-/**
- * Step 3: make sure the pending booking has exactly one gateway order for
- * its stored amount. Runs after the reservation transaction commits.
- * Compare-and-set keeps a single order id even under concurrent retries; a
- * losing order is never shown to the browser and cannot be paid.
- */
-export async function ensureGatewayOrder(db: DB, gateway: PaymentGateway, booking: Booking): Promise<Booking> {
-  if (booking.gatewayOrderId || booking.status !== "pending_payment") return booking;
-  if (booking.paymentProvider !== gateway.provider) {
-    throw new AppError("PROVIDER_CHANGED", "Payment settings changed. Please start your booking again.", 409);
-  }
-  let order;
-  try {
-    order = await gateway.createOrder({
-      amountPaise: booking.totalPaise,
-      currency: "INR",
-      receipt: booking.reference,
-      notes: { booking_id: booking.id, reference: booking.reference },
-    });
-  } catch {
-    throw new AppError(
-      "GATEWAY_UNAVAILABLE",
-      "We couldn’t reach the payment provider. Your places are still held — please try again.",
-      502,
-    );
-  }
-  if (order.amountPaise !== booking.totalPaise || order.currency !== "INR") {
-    throw new AppError("GATEWAY_MISMATCH", "The payment order didn’t match your booking. Please try again.", 502);
-  }
-  const [updated] = await db
-    .update(bookings)
-    .set({ gatewayOrderId: order.id, gatewayOrderCreatedAt: new Date() })
-    .where(and(eq(bookings.id, booking.id), isNull(bookings.gatewayOrderId)))
-    .returning();
-  if (updated) return updated;
-  const [current] = await db.select().from(bookings).where(eq(bookings.id, booking.id)).limit(1);
-  return current!;
-}
-
 export async function createCheckout(deps: CheckoutDeps, userId: string, input: BookingRequest): Promise<CheckoutPayload> {
-  const { booking: reserved, breakdown, reused } = await reserveBooking(deps, userId, input);
-  const gateway = deps.gateway!;
-
-  if (reserved.status === "pending_payment" && reserved.holdExpiresAt <= (deps.now?.() ?? new Date())) {
-    throw new AppError("HOLD_EXPIRED", "Your held places expired. Please start a new booking.", 409, {
-      bookingId: reserved.id,
-    });
+  const { booking, breakdown, reused } = await reserveBooking(deps, userId, input);
+  if (booking.status === "pending_payment" && booking.holdExpiresAt <= (deps.now?.() ?? new Date())) {
+    throw new AppError("HOLD_EXPIRED", "Your held places expired. Please start a new booking.", 409, { bookingId: booking.id });
   }
-
-  const booking = await ensureGatewayOrder(deps.db, gateway, reserved);
-  const payable = booking.status === "pending_payment" && booking.gatewayOrderId;
-
   return {
     bookingId: booking.id,
     reference: booking.reference,
     status: booking.status,
-    provider: booking.paymentProvider as "razorpay" | "demo",
     isDemo: booking.isDemo,
     reused,
-    keyId: gateway.publicKeyId,
-    order: payable ? { id: booking.gatewayOrderId!, amountPaise: booking.totalPaise, currency: "INR" } : null,
+    totalPaise: booking.totalPaise,
     holdExpiresAt: booking.holdExpiresAt.toISOString(),
     breakdown,
-    prefill: { name: booking.bookerName, email: booking.bookerEmail, contact: booking.bookerPhone },
   };
 }

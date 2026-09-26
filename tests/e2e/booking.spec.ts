@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { db, noHorizontalOverflow, setRole, signUpAndVerify, uniqueEmail, useFreshIp } from "./helpers";
+import { db, noHorizontalOverflow, screenshotPng, setRole, signUpAndVerify, uniqueEmail, useFreshIp } from "./helpers";
 
 /**
  * Full DEMO-mode journey. Demo checkout is simulated server-side through the
@@ -41,7 +41,7 @@ test.describe("demo booking journey", () => {
     await expect(page.getByText("₹6,597").first()).toBeVisible();
 
     // Acknowledgements are required and unchecked by default.
-    const pay = page.getByRole("button", { name: /Pay ₹6,597/ });
+    const pay = page.getByRole("button", { name: /Continue to pay ₹6,597/ });
     await pay.click();
     await expect(page.getByText(/Please confirm everyone in this booking/)).toBeVisible();
     await page.getByLabel(/every person included in this booking is a first-year student/).check();
@@ -49,36 +49,50 @@ test.describe("demo booking journey", () => {
     expect(await noHorizontalOverflow(page)).toBe(true);
 
     await pay.click();
-    // Bottle animation (or instant) — never says confirmed.
-    const opening = page.getByText("Opening secure checkout…");
-    if (await opening.isVisible().catch(() => false)) {
-      await expect(page.getByText(/confirmed/i)).toHaveCount(0);
-    }
-    const dialog = page.getByRole("dialog", { name: /Demo checkout/ });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByText(/DEMO MODE — no real payment/)).toBeVisible();
-
-    // Dismiss once, then retry the same held order.
-    await page.keyboard.press("Escape");
-    await expect(page.getByText(/Checkout closed — nothing is confirmed/)).toBeVisible();
-    await pay.click();
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Simulate successful payment" }).click();
-
+    // Bottle animation (or instant) → payment page. Nothing says "confirmed" yet.
     await page.waitForURL(/\/account\/bookings\/.+/);
-    await expect(page.getByText("guest list.")).toBeVisible();
-    await expect(page.getByText(/Pass \d of 3/)).toHaveCount(3);
+    await expect(page.getByText("Complete your payment")).toBeVisible();
+    await expect(page.getByAltText(/UPI QR code/)).toBeVisible();
+    await expect(page.getByText("63968583011@axl")).toBeVisible();
+    await expect(page.getByText("₹6,597").first()).toBeVisible();
+    await expect(page.getByText(/guest list/i)).toHaveCount(0);
+    expect(await noHorizontalOverflow(page)).toBe(true);
+
+    const bookingUrl = page.url();
+
+    // Upload proof: validation first, then a real screenshot + UTR.
+    await page.getByRole("button", { name: "Submit payment proof" }).click();
+    await expect(page.getByText("Attach the payment screenshot.")).toBeVisible();
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({ name: "paid.png", mimeType: "image/png", buffer: await screenshotPng(3) });
+    const utr = String(Date.now()).slice(-12); // unique per run (duplicate UTRs are rightly refused)
+    await page.getByLabel("UPI transaction ID / UTR").fill(`${utr.slice(0, 4)} ${utr.slice(4, 8)} ${utr.slice(8)}`);
+    await page.getByLabel(/I paid exactly ₹6,597/).check();
+    await page.getByRole("button", { name: "Submit payment proof" }).click();
+    await expect(page.getByText("In review").first()).toBeVisible();
+    await expect(page.getByText(utr)).toBeVisible();
     const [{ count }] = (
       await db().query(`SELECT count(*)::int AS count FROM bookings b JOIN "user" u ON u.id = b.user_id WHERE u.email = $1`, [
         email,
       ])
     ).rows;
-    expect(count).toBe(1); // dismiss + retry reused the same booking
+    expect(count).toBe(1);
 
+    // Organiser approves in the review queue (role granted server-side, never via the UI).
+    await setRole(email, "admin");
+    await page.goto("/admin/review");
+    const card = page.locator("li", { hasText: utr });
+    await expect(card.getByAltText(/Payment screenshot/)).toBeVisible();
+    await card.getByLabel(/I found ₹6,597/).check();
+    await card.getByRole("button", { name: "Approve & issue passes" }).click();
+    await expect(page.getByText(/approved — passes issued/)).toBeVisible();
+
+    await page.goto(bookingUrl);
+    await expect(page.getByText(/Pass \d of 3/)).toHaveCount(3);
     const manualCode = (await page.locator("p.font-mono").first().innerText()).trim();
 
-    // Door check-in as staff (role granted server-side, never via the UI).
-    await setRole(email, "staff");
+    // Door check-in (staff/admin only).
     await page.goto("/staff/check-in");
     await page.getByLabel("Manual code").fill(manualCode);
     await page.getByRole("button", { name: "Check" }).click();

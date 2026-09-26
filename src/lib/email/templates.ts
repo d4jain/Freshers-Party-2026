@@ -35,14 +35,14 @@ export function bookingConfirmationEmail(opts: {
   const timing = eventTimingLabel(settings.startsAt, settings.endsAt);
   const venue = `${settings.venueName}, ${settings.venueBranch}`;
   const passes = `${booking.quantityTotal} pass${booking.quantityTotal === 1 ? "" : "es"}`;
-  const demo = booking.isDemo ? "DEMO BOOKING — no real payment was taken and these passes are not valid for entry. " : "";
+  const demo = booking.isDemo ? "DEMO BOOKING — these passes are not valid for entry. " : "";
 
   const text = [
     `${demo}You’re on the guest list!`,
     ``,
     `Booking reference: ${booking.reference}`,
     `${passes} · ${booking.quantityGirls} girls, ${booking.quantityBoys} boys`,
-    `Amount paid: ${formatINR(booking.totalPaise)}`,
+    `Amount paid: ${formatINR(booking.totalPaise)} (verified by the organisers)`,
     `Date: ${date}`,
     `Time: ${timing}`,
     `Venue: ${venue}`,
@@ -95,6 +95,51 @@ export function passwordResetEmail(url: string): Omit<EmailMessage, "to"> {
     html: layout(
       "Reset your password",
       `<p>Use the button below to choose a new password. The link expires in 1 hour.</p>${button(url, "Reset password")}<p style="font-size:13px;color:#a89f92;margin-top:16px">If you didn’t ask for this, you can ignore this email.</p>`,
+    ),
+  };
+}
+
+export function bookingRejectedEmail(opts: { booking: Booking; appUrl: string }): Omit<EmailMessage, "to"> {
+  const { booking, appUrl } = opts;
+  const url = `${appUrl}/account/bookings/${booking.id}`;
+  const reason = booking.reviewNote ?? "The payment couldn’t be verified.";
+  return {
+    subject: `Payment not verified — ${EVENT_FACTS.name} (${booking.reference})`,
+    text: `We couldn’t verify the payment for booking ${booking.reference}, so it wasn’t confirmed.\n\nReason: ${reason}\n\nDetails: ${url}\nIf you believe this is a mistake, reply to this email or contact the organisers with your UPI transaction ID.`,
+    html: layout(
+      "Payment not verified",
+      `<p>We couldn’t verify the payment for booking <strong>${esc(booking.reference)}</strong>, so it wasn’t confirmed.</p>
+<p style="color:#ffd3cb">Reason: ${esc(reason)}</p>${button(url, "View booking")}
+<p style="font-size:13px;color:#a89f92;margin-top:16px">If you believe this is a mistake, contact the organisers with your UPI transaction ID.</p>`,
+    ),
+  };
+}
+
+export function bookingCancelledEmail(opts: { booking: Booking; appUrl: string }): Omit<EmailMessage, "to"> {
+  const { booking, appUrl } = opts;
+  const url = `${appUrl}/account/bookings/${booking.id}`;
+  const reason = booking.reviewNote ?? "Cancelled by the organisers.";
+  return {
+    subject: `Booking cancelled — ${EVENT_FACTS.name} (${booking.reference})`,
+    text: `Booking ${booking.reference} was cancelled and its passes are no longer valid.\n\nReason: ${reason}\n\nDetails: ${url}`,
+    html: layout(
+      "Booking cancelled",
+      `<p>Booking <strong>${esc(booking.reference)}</strong> was cancelled and its passes are no longer valid.</p>
+<p>Reason: ${esc(reason)}</p>${button(url, "View booking")}`,
+    ),
+  };
+}
+
+export function proofSubmittedAdminEmail(opts: { booking: Booking; appUrl: string }): Omit<EmailMessage, "to"> {
+  const { booking, appUrl } = opts;
+  const url = `${appUrl}/admin/review`;
+  const passes = `${booking.quantityTotal} pass${booking.quantityTotal === 1 ? "" : "es"}`;
+  return {
+    subject: `[Review] Payment proof for ${booking.reference} — ${formatINR(booking.totalPaise)}`,
+    text: `${booking.bookerName} submitted payment proof for ${booking.reference} (${passes}, ${formatINR(booking.totalPaise)}).\nReview it: ${url}`,
+    html: layout(
+      "Payment proof to review",
+      `<p>${esc(booking.bookerName)} submitted payment proof for <strong>${esc(booking.reference)}</strong> (${esc(passes)}, ${esc(formatINR(booking.totalPaise))}).</p>${button(url, "Open review queue")}`,
     ),
   };
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import { EVENT_FACTS } from "@/config/event";
 import { getDb, isDatabaseConfigured } from "@/lib/db";
-import { resolvePaymentMode } from "@/lib/payments";
+import { isDemoMode } from "@/lib/env";
 import { evaluateSales, fallbackSettings, getSettings, type EventSettings } from "@/lib/settings";
 
 export type PublicEvent = {
@@ -9,7 +9,7 @@ export type PublicEvent = {
   source: "database" | "fallback";
   salesOpen: boolean;
   salesMessage: string | null;
-  paymentMode: "razorpay" | "demo" | "disabled";
+  demo: boolean;
   mapUrl: string;
   mapIsVerifiedPin: boolean;
   directionsUrl: string;
@@ -30,15 +30,15 @@ export async function getPublicEvent(): Promise<PublicEvent> {
     settings = fallbackSettings();
     source = "fallback";
   }
-  const mode = resolvePaymentMode();
-  const sales = evaluateSales(settings, mode, new Date());
+  const demo = isDemoMode();
+  const sales = evaluateSales(settings, { demo }, new Date());
   const query = encodeURIComponent(EVENT_FACTS.venueSearchQuery);
   return {
     settings,
     source,
     salesOpen: sales.open && source === "database",
     salesMessage: sales.open ? null : sales.reason,
-    paymentMode: mode.kind,
+    demo,
     mapUrl: settings.venueMapUrl ?? `https://www.google.com/maps/search/?api=1&query=${query}`,
     mapIsVerifiedPin: Boolean(settings.venueMapUrl),
     directionsUrl: settings.venueMapUrl ?? `https://www.google.com/maps/dir/?api=1&destination=${query}`,

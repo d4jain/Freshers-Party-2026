@@ -3,33 +3,26 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getAuth, resetAuth } from "@/lib/auth";
 import { setDbOverride, type DB } from "@/lib/db";
 import { bookings, referralCodes, user, verification } from "@/lib/db/schema";
-import { setGatewayOverride } from "@/lib/payments";
 import { createTestDatabase } from "../helpers/db";
-import { bookingInput, FakeRazorpay, openSales } from "../helpers/fixtures";
+import { bookingInput, openSales, screenshotPng } from "../helpers/fixtures";
 
 let db: DB;
 let cleanup: () => Promise<void>;
-let gateway: FakeRazorpay;
 const ORIGIN = "http://localhost:3000";
 
 beforeAll(async () => {
   ({ db, cleanup } = await createTestDatabase());
   setDbOverride(db);
-  process.env.RAZORPAY_KEY_ID = "rzp_test_FAKEKEY123";
-  process.env.RAZORPAY_KEY_SECRET = "unused-in-fake";
   resetAuth();
 });
 afterAll(async () => {
   setDbOverride(undefined);
-  setGatewayOverride(undefined);
   await cleanup();
 });
 beforeEach(async () => {
   await db.execute(sql`TRUNCATE bookings, referral_codes, "user", verification RESTART IDENTITY CASCADE`);
   await db.execute(sql`DELETE FROM event_settings`);
   await openSales(db);
-  gateway = new FakeRazorpay();
-  setGatewayOverride(gateway);
 });
 
 async function signUp(email: string, extra: Record<string, unknown> = {}) {
@@ -121,10 +114,10 @@ describe("protected API routes", () => {
     expect(cross.status).toBe(403);
   });
 
-  it("creates a checkout, hides other users' bookings, and rejects forged callbacks", async () => {
+  it("creates a booking, hides other users' bookings and proofs, and only the owner can upload proof", async () => {
     const { POST } = await import("@/app/api/bookings/route");
     const { GET } = await import("@/app/api/bookings/[id]/route");
-    const verify = (await import("@/app/api/bookings/[id]/verify/route")).POST;
+    const proofRoute = await import("@/app/api/bookings/[id]/proof/route");
 
     await signUp("owner@example.com");
     await signUp("other@example.com");
@@ -133,10 +126,8 @@ describe("protected API routes", () => {
 
     const created = await POST(jsonRequest("/api/bookings", { ...bookingInput(), totalPaise: 1 }, owner));
     expect(created.status).toBe(200);
-    const { checkout } = (await created.json()) as {
-      checkout: { bookingId: string; order: { id: string; amountPaise: number } };
-    };
-    expect(checkout.order.amountPaise).toBe(439_800);
+    const { checkout } = (await created.json()) as { checkout: { bookingId: string; totalPaise: number } };
+    expect(checkout.totalPaise).toBe(439_800); // tampered total ignored
     const params = { params: Promise.resolve({ id: checkout.bookingId }) };
 
     const mine = await GET(
@@ -150,53 +141,37 @@ describe("protected API routes", () => {
     );
     expect(theirs.status).toBe(404);
 
-    const p = gateway.pay(checkout.order.id, "captured");
-    const forged = await verify(
-      jsonRequest(
-        `/api/bookings/${checkout.bookingId}/verify`,
-        {
-          razorpay_payment_id: p.id,
-          razorpay_order_id: checkout.order.id,
-          razorpay_signature: "a".repeat(64),
-        },
-        owner,
-      ),
-      params as never,
-    );
-    expect(forged.status).toBe(400);
-    const [still] = await db.select().from(bookings).where(eq(bookings.id, checkout.bookingId));
-    expect(still!.status).toBe("pending_payment");
+    const upload = async (cookie: string, origin = ORIGIN) => {
+      const fd = new FormData();
+      fd.set("screenshot", new File([new Uint8Array(await screenshotPng())], "paid.png", { type: "image/png" }));
+      fd.set("utr", "426512345678");
+      return proofRoute.POST(
+        new Request(`${ORIGIN}/api/bookings/${checkout.bookingId}/proof`, {
+          method: "POST",
+          headers: { cookie, origin },
+          body: fd,
+        }),
+        params as never,
+      );
+    };
+    expect((await upload(owner, "https://evil.example")).status).toBe(403);
+    expect((await upload(other)).status).toBe(404);
+    const ok = await upload(owner);
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { booking: { status: string; ticketCount: number } };
+    expect(body.booking.status).toBe("in_review");
+    expect(body.booking.ticketCount).toBe(0); // passes only after organiser approval
 
-    const crossUser = await verify(
-      jsonRequest(
-        `/api/bookings/${checkout.bookingId}/verify`,
-        {
-          razorpay_payment_id: p.id,
-          razorpay_order_id: checkout.order.id,
-          razorpay_signature: gateway.signCheckout(checkout.order.id, p.id),
-        },
-        other,
-      ),
-      params as never,
-    );
-    expect(crossUser.status).toBe(404);
+    const img = (cookie: string) =>
+      proofRoute.GET(new Request(`${ORIGIN}/api/bookings/${checkout.bookingId}/proof`, { headers: { cookie } }), params as never);
+    const ownImg = await img(owner);
+    expect(ownImg.status).toBe(200);
+    expect(ownImg.headers.get("content-type")).toBe("image/jpeg");
+    expect(ownImg.headers.get("cache-control")).toContain("no-store");
+    expect((await img(other)).status).toBe(404);
 
-    const genuine = await verify(
-      jsonRequest(
-        `/api/bookings/${checkout.bookingId}/verify`,
-        {
-          razorpay_payment_id: p.id,
-          razorpay_order_id: checkout.order.id,
-          razorpay_signature: gateway.signCheckout(checkout.order.id, p.id),
-        },
-        owner,
-      ),
-      params as never,
-    );
-    expect(genuine.status).toBe(200);
-    const body = (await genuine.json()) as { booking: { status: string; ticketCount: number } };
-    expect(body.booking.status).toBe("confirmed");
-    expect(body.booking.ticketCount).toBe(2);
+    const [b] = await db.select().from(bookings).where(eq(bookings.id, checkout.bookingId));
+    expect(b!.status).toBe("in_review");
   });
 
   it("keeps staff endpoints closed to regular users", async () => {

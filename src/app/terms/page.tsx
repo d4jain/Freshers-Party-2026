@@ -27,8 +27,8 @@ export default async function TermsPage() {
               (self-declaration).
             </li>
             <li>
-              A booking is confirmed only after the payment is captured and verified. Each paid place gets one QR pass, valid for
-              one entry.
+              A booking is confirmed only after the organisers verify your UPI payment. Each paid place gets one QR pass, valid
+              for one entry.
             </li>
             <li>Event timing, entry rules and any other conditions will be set by the organisers.</li>
           </ul>
