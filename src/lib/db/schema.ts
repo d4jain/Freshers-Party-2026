@@ -179,7 +179,6 @@ export const eventSettings = pgTable(
     paymentQrPath: text("payment_qr_path"),
     drinksDetails: text("drinks_details"),
     termsText: text("terms_text"),
-    privacyText: text("privacy_text"),
     refundPolicyText: text("refund_policy_text"),
     /** Bumped when policy text changes; stored on each booking acknowledgement. */
     policyVersion: integer("policy_version").notNull().default(1),

@@ -45,7 +45,7 @@ export function StickyBookingBar({ priceLabel }: { priceLabel: string }) {
       <div className="mx-auto flex max-w-xl items-center justify-between gap-4">
         <p className="leading-tight">
           <span className="display block text-2xl text-gold">{priceLabel}</span>
-          <span className="text-xs text-muted">per person · first-years only</span>
+          <span className="text-xs text-muted">per person · Bennett only</span>
         </p>
         <Link href="/book" tabIndex={show ? 0 : -1} className="btn-gold">
           Book Your Spot

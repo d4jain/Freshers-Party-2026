@@ -7,9 +7,10 @@
  * read-only fallback for the public landing page when the database is
  * unreachable. Booking and payment code never reads prices from here.
  *
- * Never add unconfirmed facts (start time, capacity, contacts, refund rules,
- * drink inclusions, map pin). Leave them null and configure them in
- * Admin → Settings once the organiser confirms them.
+ * Never add unconfirmed facts (end time, capacity, map pin…). Leave them null
+ * and configure them in Admin → Settings once the organiser confirms them.
+ * Start time, contacts, menu and policies below were supplied by the
+ * organisers on 26 Sep 2026.
  */
 
 export const EVENT_TIMEZONE = "Asia/Kolkata";
@@ -17,8 +18,10 @@ export const EVENT_TIMEZONE = "Asia/Kolkata";
 export const EVENT_FACTS = {
   name: "Freshers’ Party 2026",
   shortName: "Freshers’ 2026",
-  /** Calendar date in Asia/Kolkata. The start time is not confirmed. */
+  /** Calendar date in Asia/Kolkata. */
   eventDate: "2026-10-01",
+  /** Start time as given by the organisers ("7:00 a.m., 1st October"). End time not confirmed. */
+  startsAtIso: "2026-10-01T07:00:00+05:30",
   timezone: EVENT_TIMEZONE,
   venueName: "Rubarru",
   venueBranch: "Advant Navis Park, Noida",
@@ -33,10 +36,16 @@ export const EVENT_FACTS = {
   venueSearchQuery: "Rubarru, Uptown Square, Advant Navis Business Park, Sector 142, Noida",
   whatsappGroupUrl: "https://chat.whatsapp.com/FmJaepiArmjAbe7v5fofZA?mode=gi_t",
   highlights: ["Unlimited Food + Unlimited Drinks", "Party | Dance | Games"],
-  audience: "First-year Bennett University students only",
+  audience: "Bennett University students only",
   independentDisclosure:
     "Freshers’ Party 2026 is an unofficial, independently organised event. It is not organised, endorsed or sponsored by Bennett University.",
 } as const;
+
+/** Organiser contact details shown on the event page. */
+export const CONTACT_DEFAULTS = {
+  email: "bufreshers26@gmail.com",
+  instagram: "https://www.instagram.com/bufreshers_26/",
+};
 
 /**
  * Organiser's UPI payment details, decoded from the supplied QR code
@@ -70,9 +79,8 @@ export const DEFAULT_HOLD_MINUTES = 30;
 export const DEMO_CAPACITY = 150;
 
 /** Version strings stored with every booking acknowledgement. */
-export const ELIGIBILITY_ACK_VERSION = "eligibility-v1";
-export const ELIGIBILITY_ACK_TEXT =
-  "I confirm that every person included in this booking is a first-year student at Bennett University.";
+export const ELIGIBILITY_ACK_VERSION = "eligibility-v2";
+export const ELIGIBILITY_ACK_TEXT = "I confirm that every person included in this booking is a student at Bennett University.";
 
 /** Fallback countdown target when no start time is configured: 1 Oct 2026, 00:00 IST. */
 export const EVENT_DAY_START_ISO = "2026-10-01T00:00:00+05:30";

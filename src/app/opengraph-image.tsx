@@ -20,9 +20,7 @@ export default function OpengraphImage() {
         fontFamily: "serif",
       }}
     >
-      <div style={{ display: "flex", fontSize: 24, letterSpacing: 8, color: "#D7B777" }}>
-        FIRST-YEARS ONLY · BENNETT UNIVERSITY
-      </div>
+      <div style={{ display: "flex", fontSize: 24, letterSpacing: 8, color: "#D7B777" }}>BENNETT UNIVERSITY STUDENTS ONLY</div>
       <div style={{ display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", fontSize: 128, lineHeight: 1 }}>Freshers’</div>
         <div style={{ display: "flex", fontSize: 128, lineHeight: 1, color: "#D7B777", fontStyle: "italic" }}>Party 2026</div>

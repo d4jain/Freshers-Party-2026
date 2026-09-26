@@ -302,7 +302,7 @@ function BookingFlowInner({
       >
         Who’s <em className="text-gold">coming?</em>
       </h2>
-      <p className="text-mist">Same price for everyone. Every person must be a first-year Bennett University student.</p>
+      <p className="text-mist">Same price for everyone. Every person must be a Bennett University student.</p>
       <Stepper
         label="Total people"
         value={total}

@@ -50,7 +50,7 @@ export function bookingConfirmationEmail(opts: {
     `View and download your passes (log in required): ${passesUrl}`,
     `Join the WhatsApp group for updates and entry details: ${whatsapp}`,
     ``,
-    `Every person in this booking must be a first-year Bennett University student.`,
+    `Every person in this booking must be a Bennett University student. Carry your college ID.`,
     EVENT_FACTS.independentDisclosure,
   ].join("\n");
 
@@ -67,7 +67,7 @@ export function bookingConfirmationEmail(opts: {
 <tr><td style="color:#a89f92;padding:4px 0">Venue</td><td style="text-align:right">${esc(venue)}</td></tr>
 </table>
 ${button(passesUrl, "View my passes")}${button(whatsapp, "Join the WhatsApp group")}
-<p style="font-size:13px;color:#a89f92;margin-top:20px">Joining the WhatsApp group is how you’ll get updates and entry details. Every person in this booking must be a first-year Bennett University student.</p>`,
+<p style="font-size:13px;color:#a89f92;margin-top:20px">Joining the WhatsApp group is how you’ll get updates and entry details. Every person in this booking must be a Bennett University student. Carry your college ID.</p>`,
   );
 
   return {

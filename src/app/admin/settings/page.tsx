@@ -89,11 +89,11 @@ export default async function SettingsPage() {
           />
           <F label="End time (IST)" name="endsAt" type="datetime-local" defaultValue={dateToIstLocal(s.endsAt)} />
           <T
-            label="Drinks details (shown publicly)"
+            label="Drinks note (shown publicly)"
             name="drinksDetails"
             defaultValue={s.drinksDetails}
             rows={3}
-            hint="Only confirmed facts. Blank = “drinks menu not announced yet”."
+            hint="Optional extra line under “Unlimited Drinks”. The food & drinks menu itself lives in src/config/menu.ts."
           />
         </Group>
 
@@ -199,7 +199,6 @@ export default async function SettingsPage() {
             closed until approved.
           </p>
           <T label="Event terms" name="termsText" defaultValue={s.termsText} />
-          <T label="Privacy policy" name="privacyText" defaultValue={s.privacyText} />
           <T label="Cancellation & refund policy" name="refundPolicyText" defaultValue={s.refundPolicyText} />
           <label className="flex items-center gap-3 rounded-xl border border-gold/30 p-3 text-sm font-semibold text-ivory">
             <input

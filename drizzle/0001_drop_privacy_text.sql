@@ -1,0 +1,1 @@
+ALTER TABLE "event_settings" DROP COLUMN "privacy_text";

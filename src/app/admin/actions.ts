@@ -138,13 +138,11 @@ export async function saveSettings(_prev: ActionResult, fd: FormData): Promise<A
   const heroPoster = str(fd, "heroVideoPoster");
 
   const termsText = str(fd, "termsText");
-  const privacyText = str(fd, "privacyText");
   const refundPolicyText = str(fd, "refundPolicyText");
-  const policiesChanged =
-    termsText !== current.termsText || privacyText !== current.privacyText || refundPolicyText !== current.refundPolicyText;
+  const policiesChanged = termsText !== current.termsText || refundPolicyText !== current.refundPolicyText;
   const policiesApproved = fd.get("policiesApproved") === "on";
-  if (policiesApproved && (!termsText || !privacyText || !refundPolicyText)) {
-    return fail("Add terms, privacy and refund policy text before approving policies.");
+  if (policiesApproved && (!termsText || !refundPolicyText)) {
+    return fail("Add the terms and refund policy text before approving policies.");
   }
   const salesEnabled = fd.get("salesEnabled") === "on";
   if (salesEnabled && (!policiesApproved || capacity == null)) {
@@ -180,7 +178,6 @@ export async function saveSettings(_prev: ActionResult, fd: FormData): Promise<A
     paymentQrPath: paymentQrPath,
     drinksDetails: str(fd, "drinksDetails"),
     termsText,
-    privacyText,
     refundPolicyText,
     policiesApproved,
     approvedMedia,
@@ -219,7 +216,7 @@ export async function saveSettings(_prev: ActionResult, fd: FormData): Promise<A
       details: summary,
     });
   });
-  for (const p of ["/", "/book", "/terms", "/privacy", "/refund-policy", "/admin/settings"]) revalidatePath(p);
+  for (const p of ["/", "/book", "/terms", "/refund-policy", "/admin/settings"]) revalidatePath(p);
   return ok(
     `Saved ${changed.length} change${changed.length === 1 ? "" : "s"}. Existing bookings keep their original prices.${policiesChanged ? " Policy version bumped — buyers must accept the new text." : ""}`,
   );

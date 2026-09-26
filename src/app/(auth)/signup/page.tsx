@@ -12,14 +12,14 @@ export default async function SignupPage(props: PageProps<"/signup">) {
   return (
     <>
       <PageTitle
-        eyebrow="First-years only"
+        eyebrow="Bennett students only"
         title={
           <>
             Create your <em className="text-gold">account</em>
           </>
         }
       >
-        One account holds your bookings and passes. Bookings are for first-year Bennett University students only.
+        One account holds your bookings and passes. Bookings are for Bennett University students only.
       </PageTitle>
       <SignupForm next={next} whatsappUrl={EVENT_FACTS.whatsappGroupUrl} requireVerification={env().REQUIRE_EMAIL_VERIFICATION} />
     </>

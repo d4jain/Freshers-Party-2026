@@ -1,15 +1,37 @@
 import type { ReactNode } from "react";
 import { PageShell, PageTitle } from "./page-shell";
 
-/** Renders organiser-approved plain text safely (no HTML), paragraph by paragraph. */
+/** `**bold**` → <strong>; everything else stays text (React escapes it). */
+function inline(text: string) {
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+    i % 2 ? (
+      <strong key={i} className="font-semibold text-ivory">
+        {part}
+      </strong>
+    ) : (
+      part
+    ),
+  );
+}
+
+/**
+ * Renders organiser-approved text safely (never as HTML): paragraphs split by
+ * blank lines, "## " lines as headings, and **bold**.
+ */
 export function PolicyText({ text }: { text: string }) {
   return (
     <div className="space-y-4 leading-relaxed text-mist">
-      {text.split(/\n{2,}/).map((para, i) => (
-        <p key={i} className="whitespace-pre-line">
-          {para}
-        </p>
-      ))}
+      {text.split(/\n{2,}/).map((para, i) =>
+        para.startsWith("## ") ? (
+          <h2 key={i} className="pt-2 font-display text-2xl text-gold">
+            {para.slice(3)}
+          </h2>
+        ) : (
+          <p key={i} className="whitespace-pre-line">
+            {inline(para)}
+          </p>
+        ),
+      )}
     </div>
   );
 }

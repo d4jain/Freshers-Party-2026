@@ -14,7 +14,7 @@ export function Hero({ event }: { event: PublicEvent }) {
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-end px-4 pt-28 pb-20 sm:px-6 lg:px-8 lg:pb-24">
         <p className="inline-flex w-fit items-center gap-2 rounded-full border border-gold/40 bg-ink/60 px-3.5 py-1.5 text-[0.78rem] font-bold text-gold-bright backdrop-blur">
           <GraduationCap className="h-4 w-4" aria-hidden="true" />
-          First-years only · Bennett University
+          Bennett University students only
         </p>
 
         <p className="mt-6 font-script text-3xl text-gold/90 sm:text-4xl" aria-hidden="true">
@@ -25,7 +25,7 @@ export function Hero({ event }: { event: PublicEvent }) {
         </div>
 
         <p className="mt-5 max-w-xl font-display text-2xl leading-snug text-ivory/90 italic sm:text-3xl">
-          Your first year. Your first unforgettable night.
+          Your people. Your first unforgettable night.
         </p>
 
         <ul className="mt-7 flex flex-col gap-2.5 text-[0.95rem] font-semibold text-mist sm:flex-row sm:flex-wrap sm:gap-x-7">

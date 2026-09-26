@@ -45,7 +45,7 @@ describe("checkout creation", () => {
     expect(res.isDemo).toBe(false);
     const [b] = await db.select().from(bookings).where(eq(bookings.id, res.bookingId));
     expect(b!.totalPaise).toBe(659_700);
-    expect(b!.eligibilityAckVersion).toBe("eligibility-v1");
+    expect(b!.eligibilityAckVersion).toBe("eligibility-v2");
     expect(b!.termsAckPolicyVersion).toBe(1);
     const [hold] = await db.select().from(inventoryHolds).where(eq(inventoryHolds.bookingId, b!.id));
     expect(hold!.quantity).toBe(3);

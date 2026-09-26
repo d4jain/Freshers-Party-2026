@@ -12,14 +12,14 @@ export function Experience({ drinksDetails }: { drinksDetails: string | null }) 
   const items: Item[] = [
     {
       title: "Unlimited Food",
-      body: "Unlimited food. Menu to be announced.",
+      body: "Veg and non-veg starters, mains, staples and dessert. See the menu below.",
       icon: UtensilsCrossed,
       image: STOCK.buffet,
       className: "sm:col-span-2 lg:col-span-3 lg:row-span-2",
     },
     {
       title: "Unlimited Drinks",
-      body: drinksDetails ?? "Unlimited drinks. The drinks menu hasn’t been announced yet.",
+      body: drinksDetails ?? "Mocktails and a full bar (21+ only). See the menu below.",
       icon: GlassWater,
       image: STOCK.mocktail,
       className: "lg:col-span-3",

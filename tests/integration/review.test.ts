@@ -264,7 +264,7 @@ describe("emails", () => {
     await processEmailOutbox(db, { appUrl: "http://localhost:3000", provider });
     const confirmation = sent.find((m) => m.subject.includes("You’re in"));
     expect(confirmation?.text).toContain("verified by the organisers");
-    expect(confirmation?.text).toContain("Timing to be announced");
+    expect(confirmation?.text).toContain("From 7:00 am IST");
     expect(sent.some((m) => m.subject.startsWith("[Review]"))).toBe(false); // stale admin alert dropped after approval
   });
 });

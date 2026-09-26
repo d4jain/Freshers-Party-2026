@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import {
+  CONTACT_DEFAULTS,
   DEFAULT_HOLD_MINUTES,
   DEFAULT_MAX_GROUP_SIZE,
   DEMO_CAPACITY,
@@ -8,6 +9,7 @@ import {
   PRICING_DEFAULTS,
   UPI_DEFAULTS,
 } from "@/config/event";
+import { REFUND_POLICY_TEXT, TERMS_TEXT } from "@/config/policies";
 import type { Queryable } from "@/lib/db";
 import { eventSettings, type EventSettingsRow } from "@/lib/db/schema";
 
@@ -19,6 +21,7 @@ export function defaultSettingsValues() {
     eventName: EVENT_FACTS.name,
     eventDate: EVENT_FACTS.eventDate,
     timezone: EVENT_FACTS.timezone,
+    startsAt: new Date(EVENT_FACTS.startsAtIso),
     venueName: EVENT_FACTS.venueName,
     venueBranch: EVENT_FACTS.venueBranch,
     venueAddress: EVENT_FACTS.venueAddress,
@@ -34,6 +37,12 @@ export function defaultSettingsValues() {
     upiId: UPI_DEFAULTS.upiId,
     upiPayeeName: UPI_DEFAULTS.payeeName,
     paymentQrPath: UPI_DEFAULTS.qrPath,
+    organiserEmail: CONTACT_DEFAULTS.email,
+    organiserInstagram: CONTACT_DEFAULTS.instagram,
+    // Supplied by the organisers as final text, so seeded as approved.
+    termsText: TERMS_TEXT,
+    refundPolicyText: REFUND_POLICY_TEXT,
+    policiesApproved: true,
   } satisfies typeof eventSettings.$inferInsert;
 }
 
@@ -42,7 +51,6 @@ export function fallbackSettings(): EventSettings {
   const now = new Date(0);
   return {
     ...defaultSettingsValues(),
-    startsAt: null,
     endsAt: null,
     bookingFeeLabel: null,
     capacity: null,
@@ -53,14 +61,8 @@ export function fallbackSettings(): EventSettings {
     organiserName: null,
     organiserPhone: null,
     organiserWhatsapp: null,
-    organiserEmail: null,
-    organiserInstagram: null,
     drinksDetails: null,
-    termsText: null,
-    privacyText: null,
-    refundPolicyText: null,
     policyVersion: 1,
-    policiesApproved: false,
     approvedMedia: [],
     heroVideo: null,
     version: 0,
@@ -142,7 +144,7 @@ export function evaluateSales(settings: EventSettings, opts: { demo: boolean }, 
         open: false,
         code: "POLICIES_NOT_APPROVED",
         reason: "Online booking isn’t live yet.",
-        setupHint: "Organisers: add and approve the terms, privacy and refund policy text in Admin → Settings.",
+        setupHint: "Organisers: add and approve the terms and refund policy text in Admin → Settings.",
       };
     }
   }

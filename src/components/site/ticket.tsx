@@ -60,7 +60,7 @@ export function TicketCard({ event }: { event: PublicEvent }) {
           ))}
         </ul>
         <p className="relative mt-6 text-xs leading-relaxed text-muted">
-          First-year Bennett University students only.{" "}
+          Bennett University students only.{" "}
           {s.bookingFeePaise > 0
             ? `A ${formatINR(s.bookingFeePaise)} ${s.bookingFeeLabel ?? "booking fee"} applies per order. `
             : "No booking fee. "}

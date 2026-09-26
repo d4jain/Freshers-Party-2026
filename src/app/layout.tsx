@@ -17,7 +17,7 @@ const pinyon = Pinyon_Script({ subsets: ["latin"], weight: "400", variable: "--f
 
 const appUrl = process.env.APP_URL ?? "http://localhost:3000";
 const description =
-  "Freshers’ Party 2026 for first-year Bennett University students — 1 October 2026 at Rubarru, Advant Navis Park, Noida. Unlimited food + unlimited drinks. Party, dance, games. ₹2,199 per person.";
+  "Freshers’ Party 2026 for Bennett University students — 1 October 2026 at Rubarru, Advant Navis Park, Noida. Unlimited food + unlimited drinks. Party, dance, games. ₹2,199 per person.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),

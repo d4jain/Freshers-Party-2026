@@ -81,7 +81,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/tickets/[id]/pas
               <span style={{ marginTop: 20 }}>Manual code</span>
               <span style={{ fontSize: 40, color: "#F1DCA7", letterSpacing: 4 }}>{formatManualCode(row.t.manualCode)}</span>
               <span style={{ marginTop: 28, fontSize: 20, maxWidth: 360 }}>
-                First-year Bennett University students only. One scan per pass.
+                Bennett University students only. Carry your college ID. One scan per pass.
               </span>
               {row.t.isDemo ? (
                 <span style={{ marginTop: 16, fontSize: 28, color: "#FF9B8A" }}>DEMO — NOT VALID FOR ENTRY</span>

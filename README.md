@@ -1,7 +1,7 @@
 # Freshers’ Party 2026
 
 Website, booking and door check-in for **Freshers’ Party 2026** — an
-unofficial, independently organised party for **first-year Bennett University
+unofficial, independently organised party for **Bennett University
 students** on **Thursday, 1 October 2026** at **Rubarru, Advant Navis Park,
 Noida**. ₹2,199 per person (was ₹2,500), same price for everyone. Unlimited
 Food + Unlimited Drinks · Party | Dance | Games.
@@ -71,10 +71,15 @@ live sales stay closed until capacity and approved policies are configured.
 
 All variables are documented in [`.env.example`](.env.example). Event facts
 that organisers can change (start/end time, capacity, sales window, price,
-contacts, map pin, drinks details, policies, approved media, hero video) live in
+contacts, map pin, drinks note, policies, approved media, hero video) live in
 the database and are edited in **Admin → Settings**; nothing unconfirmed is
-invented — the site shows “Timing to be announced”, hides unconfigured contact
-buttons, and uses a labelled Google Maps *search* link until a pin is verified.
+invented — the site hides unconfigured contact buttons and uses a labelled
+Google Maps *search* link until a pin is verified. Organiser-supplied facts
+(start time 7:00 am IST, contact email/Instagram, terms, refund policy) seed
+that row from `src/config/event.ts` and `src/config/policies.ts`; `npm run
+db:seed` fills only empty columns and never overwrites an organiser's edits.
+The food & drinks menu lives in `src/config/menu.ts` (photos: illustrative
+Wikimedia Commons images, credited in `public/media/menu/credits.json`).
 
 ## How payments work
 
@@ -127,14 +132,12 @@ Details: [`docs/DEV_TOOLING.md`](docs/DEV_TOOLING.md). Asset sources and licence
 
 ## Missing launch inputs (organiser decisions / secrets)
 
-- **Event start/end time**, **capacity**, **sales open/close**, offer expiry (if any)
-- **Organiser name and contact** (phone/WhatsApp/email/Instagram)
-- **Event terms, privacy policy and cancellation/refund policy** (organiser-approved text)
-- **Drinks details** (currently “menu not announced”; no alcohol is promised)
+- **Event end time**, **capacity**, **sales open/close**, offer expiry (if any)
+- Organiser name / phone (email and Instagram are set)
 - **Verified map pin** for the Advant Navis Park branch
 - **The event poster** (not found in the project) and any **approved venue/previous-event media**; optional hero video
 - **Haikei SVG exports** (see decor spec)
 - Secrets: Neon URLs, `BETTER_AUTH_SECRET`, `TICKET_SIGNING_SECRET`, `CRON_SECRET`,
   Resend key + verified sender domain
-- Confirm the **UPI QR / ID** (currently the supplied QR: ABHIRAKSHIT GAUR, `63968583011@axl`) and set an
-  **organiser email** to get “proof submitted” alerts
+- Confirm the **UPI QR / ID** (currently the supplied QR: ABHIRAKSHIT GAUR, `63968583011@axl`); “proof
+  submitted” alerts go to the organiser email (bufreshers26@gmail.com)

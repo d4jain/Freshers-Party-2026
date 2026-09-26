@@ -75,7 +75,7 @@ idempotency keys; failures retry with backoff and never affect bookings.
 
 ## 7. Before enabling live sales (Admin → Settings)
 
-- Capacity, sales window, start/end time (IST), organiser contact(s)
-- Terms, privacy and **refund** policy text pasted and marked approved
+- Capacity, sales window, end time (IST); check the seeded start time and contacts
+- Terms and **refund** policy text present and marked approved (seeded from `src/config/policies.ts`)
 - Verified map pin (optional) and approved venue media (optional)
 - Then tick **Live sales enabled**.

@@ -10,6 +10,11 @@ function instagramUrl(handle: string) {
   return `https://instagram.com/${handle.replace(/^@/, "")}`;
 }
 
+function instagramHandle(value: string) {
+  const handle = value.replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/[/?#].*$/, "");
+  return `@${handle.replace(/^@/, "")}`;
+}
+
 /** Contact buttons appear only for details the organiser has configured. */
 export function ReachOut({ event }: { event: PublicEvent }) {
   const s = event.settings;
@@ -26,7 +31,7 @@ export function ReachOut({ event }: { event: PublicEvent }) {
     s.organiserInstagram && {
       href: instagramUrl(s.organiserInstagram),
       label: "Instagram",
-      value: s.organiserInstagram,
+      value: instagramHandle(s.organiserInstagram),
       icon: AtSign,
       external: true,
     },
@@ -39,13 +44,12 @@ export function ReachOut({ event }: { event: PublicEvent }) {
       <h2 id="reach-title" className="display relative mt-4 text-[clamp(2.6rem,9vw,5rem)] text-ivory">
         Questions? <em className="text-gold">Ask away.</em>
       </h2>
-      {s.organiserName ? (
-        <p className="relative mt-4 text-mist">Organised by {s.organiserName}.</p>
-      ) : (
-        <p className="relative mt-4 text-mist">
-          Organiser contact details are coming soon. Updates land in the WhatsApp group first.
-        </p>
-      )}
+      <p className="relative mt-4 text-mist">
+        {s.organiserName && <>Organised by {s.organiserName}. </>}
+        {contacts.length
+          ? "Email us or DM us on Instagram. Updates land in the WhatsApp group first."
+          : "Organiser contact details are coming soon. Updates land in the WhatsApp group first."}
+      </p>
 
       <div className="relative mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
         <a href={event.whatsappUrl} target="_blank" rel="noopener noreferrer" className="btn-gold min-h-14 px-8">
@@ -62,7 +66,7 @@ export function ReachOut({ event }: { event: PublicEvent }) {
           >
             <c.icon className="h-4 w-4" aria-hidden="true" />
             {c.label}
-            <span className="sr-only">: {c.value}</span>
+            <span className="font-normal text-mist normal-case">{c.value}</span>
           </a>
         ))}
       </div>

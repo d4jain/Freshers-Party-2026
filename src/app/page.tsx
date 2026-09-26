@@ -6,6 +6,7 @@ import { SiteFooter } from "@/components/site/footer";
 import { Gallery } from "@/components/site/gallery";
 import { Hero } from "@/components/site/hero";
 import { Marquee } from "@/components/site/marquee";
+import { Menu } from "@/components/site/menu";
 import { SiteNav } from "@/components/site/nav";
 import { ReachOut } from "@/components/site/reach-out";
 import { Reveal } from "@/components/site/reveal";
@@ -27,9 +28,8 @@ function faqItems(event: PublicEvent): FaqItem[] {
       q: "Who can come?",
       a: (
         <p>
-          Only first-year Bennett University students. When you book, you confirm that every person in your booking is a
-          first-year Bennett student. That’s a self-declaration, not an identity check — entry details will be shared in the
-          WhatsApp group.
+          Only Bennett University students. When you book, you confirm that every person in your booking is a Bennett student.
+          Carry your college ID — you may be asked for it at entry. Entry details will be shared in the WhatsApp group.
         </p>
       ),
     },
@@ -88,8 +88,8 @@ function faqItems(event: PublicEvent): FaqItem[] {
       q: "What’s included?",
       a: (
         <p>
-          Unlimited food and unlimited drinks, plus party, dance and games.{" "}
-          {s.drinksDetails ? s.drinksDetails : "The food and drinks menus haven’t been announced yet."}
+          Unlimited food and unlimited drinks, plus party, dance and games. See the <Link href="#menu">full menu</Link>.{" "}
+          {s.drinksDetails}
         </p>
       ),
     },
@@ -97,8 +97,9 @@ function faqItems(event: PublicEvent): FaqItem[] {
       q: "Can I cancel or get a refund?",
       a: s.refundPolicyText ? (
         <p>
-          See the <Link href="/refund-policy">cancellation & refund policy</Link>. Approved refunds are sent back by the
-          organisers via UPI.
+          No — once your booking is confirmed, tickets are non-refundable, non-transferable and can’t be cancelled. If the
+          organisers cancel the event, they’ll contact you with what happens next. See the{" "}
+          <Link href="/refund-policy">cancellation & refund policy</Link>.
         </p>
       ) : (
         <p>
@@ -142,11 +143,10 @@ export default async function HomePage() {
     "@context": "https://schema.org",
     "@type": "Event",
     name: EVENT_FACTS.name,
-    // Date only: the start time hasn't been confirmed.
     startDate: s.startsAt ? s.startsAt.toISOString() : s.eventDate,
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
     eventStatus: "https://schema.org/EventScheduled",
-    description: "Freshers’ party for first-year Bennett University students. Independently organised; not a university event.",
+    description: "Freshers’ party for Bennett University students. Independently organised; not a university event.",
     location: {
       "@type": "Place",
       name: `${s.venueName}, ${s.venueBranch}`,
@@ -195,6 +195,21 @@ export default async function HomePage() {
             </div>
           </Reveal>
           <Experience drinksDetails={s.drinksDetails} />
+        </Section>
+
+        <Section id="menu" labelledBy="menu-title" className="pb-20 sm:pb-28">
+          <Reveal>
+            <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="eyebrow">The Menu</p>
+                <h2 id="menu-title" className="display mt-4 text-[clamp(2.8rem,10vw,6rem)] text-ivory">
+                  Eat. Sip. <em className="text-gold">Repeat.</em>
+                </h2>
+              </div>
+              <p className="max-w-sm text-mist">Starters to dessert, mocktails to the bar — here’s what’s being served.</p>
+            </div>
+          </Reveal>
+          <Menu />
         </Section>
 
         <WaveDivider flip />

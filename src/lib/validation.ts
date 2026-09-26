@@ -72,7 +72,7 @@ export const bookingRequestSchema = z
     bookerName: nameSchema,
     bookerPhone: indianPhoneSchema,
     bookerEmail: emailSchema,
-    eligibilityAck: z.literal(true, { error: "Please confirm everyone in this booking is a first-year Bennett student." }),
+    eligibilityAck: z.literal(true, { error: "Please confirm everyone in this booking is a Bennett University student." }),
     termsAck: z.literal(true, { error: "Please accept the event terms and cancellation/refund policy." }),
     termsPolicyVersion: z.number().int().min(1),
     idempotencyKey: z.uuid(),

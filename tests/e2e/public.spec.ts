@@ -8,19 +8,20 @@ test.describe("public landing page", () => {
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Freshers’");
-    await expect(page.getByText("First-years only · Bennett University")).toBeVisible();
+    await expect(page.getByText("Bennett University students only").first()).toBeVisible();
     await expect(page.getByText("Thursday, 1 October 2026").first()).toBeVisible();
-    await expect(page.getByText("Timing to be announced").first()).toBeVisible();
+    await expect(page.getByText(/From 7:00 am IST/).first()).toBeAttached();
     await expect(page.getByText("₹2,199").first()).toBeVisible();
     await expect(page.locator("s", { hasText: "₹2,500" }).first()).toBeVisible();
-    await expect(page.getByText("Countdown to event day — start time TBA.")).toBeVisible();
+    await expect(page.getByText(/Countdown to doors · .*7:00 am IST/)).toBeVisible();
     await expect(page.getByRole("link", { name: /Join WhatsApp/ }).first()).toHaveAttribute(
       "href",
       "https://chat.whatsapp.com/FmJaepiArmjAbe7v5fofZA?mode=gi_t",
     );
     await expect(page.getByText(/not organised, endorsed or sponsored by Bennett University/).first()).toBeAttached();
-    // No invented alcohol promise
-    expect(await page.content()).not.toMatch(/alcohol|beer|vodka|cocktails? included/i);
+    // Organiser-supplied menu: the bar list always carries the legal-age note.
+    await expect(page.getByText(/21\+ in Uttar Pradesh/)).toBeAttached();
+    expect(await page.content()).not.toMatch(/first[- ]year/i);
     expect(await noHorizontalOverflow(page)).toBe(true);
     for (const y of [1200, 2400, 3600, 4800, 6000]) {
       await page.evaluate((v) => window.scrollTo(0, v), y);
@@ -44,7 +45,17 @@ test.describe("public landing page", () => {
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await page.keyboard.press("Enter");
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByText(/self-declaration, not an identity check/).first()).toBeVisible();
+    await expect(page.getByText(/Carry your college ID — you may be asked for it at entry/).first()).toBeVisible();
+  });
+
+  test("menu tabs switch between food and drinks", async ({ page }) => {
+    await page.goto("/#menu");
+    await expect(page.getByText("Paneer Tikka")).toBeVisible();
+    await page.getByRole("tab", { name: "Drinks" }).click();
+    await expect(page.getByRole("tab", { name: "Drinks" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("Virgin Mojito")).toBeVisible();
+    await expect(page.getByText("Kingfisher Premium")).toBeVisible();
+    await expect(page.getByText(/21\+ in Uttar Pradesh/)).toBeVisible();
   });
 
   test("gallery captions stock photos honestly and survives image failures", async ({ page }) => {
@@ -70,7 +81,7 @@ test.describe("public landing page", () => {
     await page.mouse.move(300, 300);
     await page.mouse.move(600, 400);
     await expect(page.locator("canvas[aria-hidden='true']")).toHaveCount(0);
-    await expect(page.getByText("Your first year. Your first unforgettable night.")).toBeVisible();
+    await expect(page.getByText("Your people. Your first unforgettable night.")).toBeVisible();
     await ctx.close();
   });
 });

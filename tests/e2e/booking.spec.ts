@@ -44,7 +44,7 @@ test.describe("demo booking journey", () => {
     const pay = page.getByRole("button", { name: /Continue to pay ₹6,597/ });
     await pay.click();
     await expect(page.getByText(/Please confirm everyone in this booking/)).toBeVisible();
-    await page.getByLabel(/every person included in this booking is a first-year student/).check();
+    await page.getByLabel(/every person included in this booking is a student at Bennett University/).check();
     await page.getByLabel(/I accept the/).check();
     expect(await noHorizontalOverflow(page)).toBe(true);
 
@@ -130,7 +130,6 @@ test.describe("layout on signed-in pages", () => {
       "/admin/audit",
       "/staff/check-in",
       "/terms",
-      "/privacy",
       "/refund-policy",
     ]) {
       await page.goto(path);
