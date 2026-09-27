@@ -30,7 +30,7 @@ export function Experience({ drinksDetails }: { drinksDetails: string | null }) 
     },
     {
       title: "Unlimited Drinks",
-      body: drinksDetails ?? "Mocktails and a full bar (21+ only).",
+      body: drinksDetails ?? "Mocktails and a full bar.",
       menu: "drinks",
       icon: GlassWater,
       image: STOCK.mocktail,
