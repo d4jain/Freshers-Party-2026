@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bodoni_Moda, Manrope, Pinyon_Script } from "next/font/google";
 import { EffectsProvider } from "@/components/effects/effects-provider";
 import { GlitterLayer } from "@/components/effects/glitter-layer";
+import { SiteAnalytics } from "@/components/site/analytics";
 import { EVENT_FACTS } from "@/config/event";
 import "./globals.css";
 
@@ -61,6 +62,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           {children}
           <GlitterLayer />
         </EffectsProvider>
+        <SiteAnalytics />
       </body>
     </html>
   );

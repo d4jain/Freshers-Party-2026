@@ -28,6 +28,7 @@
     "omniroute:check": "omniroute doctor"
   },
   "dependencies": {
+    "@vercel/analytics": "2.0.1",
     "better-auth": "1.7.6",
     "clsx": "2.1.1",
     "drizzle-orm": "0.45.3",
