@@ -71,6 +71,3 @@ export const BAR: MenuGroup[] = [
   },
 ];
 
-/** Legal drinking age for Uttar Pradesh (Noida). */
-export const ALCOHOL_NOTE =
-  "Alcoholic drinks are served only to guests of legal drinking age (21+ in Uttar Pradesh). Carry a valid photo ID — the venue may check it.";

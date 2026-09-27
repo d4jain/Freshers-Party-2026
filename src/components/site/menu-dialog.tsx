@@ -3,7 +3,7 @@
 import { X } from "lucide-react";
 import { Dialog } from "radix-ui";
 import type { ReactNode } from "react";
-import { ALCOHOL_NOTE, BAR, FOOD_MENU, MOCKTAILS, type MenuGroup } from "@/config/menu";
+import { BAR, FOOD_MENU, MOCKTAILS, type MenuGroup } from "@/config/menu";
 import { cn } from "@/lib/utils";
 
 export type MenuKind = "food" | "drinks";
@@ -58,7 +58,6 @@ function DrinksMenu() {
       <Group group={MOCKTAILS} />
       <div className="border-t border-gold/15 pt-7">
         <p className="font-display text-3xl text-gold italic">The bar</p>
-        <p className="mt-2 text-sm text-muted">{ALCOHOL_NOTE}</p>
         <div className="mt-6 grid gap-x-10 gap-y-7 sm:grid-cols-2">
           {BAR.map((g) => (
             <Group key={g.title} group={g} />

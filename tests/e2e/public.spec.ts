@@ -59,7 +59,6 @@ test.describe("public landing page", () => {
     const drinks = page.getByRole("dialog", { name: "Drinks menu" });
     await expect(drinks.getByText("Virgin Mojito")).toBeVisible();
     await expect(drinks.getByText("Kingfisher Premium")).toBeVisible();
-    await expect(drinks.getByText(/21\+ in Uttar Pradesh/)).toBeVisible();
   });
 
   test("gallery captions stock photos honestly and survives image failures", async ({ page }) => {
