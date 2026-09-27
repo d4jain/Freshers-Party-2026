@@ -15,6 +15,7 @@ import { env } from "@/lib/env";
 import { istLocalToDate } from "@/lib/format";
 import { isAppError } from "@/lib/errors";
 import { normalizeIndianMobile } from "@/lib/phone";
+import { recordReferralPayout } from "@/lib/referrals";
 import { getSettings } from "@/lib/settings";
 import { voidTicket } from "@/lib/tickets/checkin";
 
@@ -319,6 +320,30 @@ export async function createReferral(_prev: ActionResult, fd: FormData): Promise
   }
   revalidatePath("/admin/referrals");
   return ok(`Referral code ${code} created. It attributes signups/bookings — it gives no discount.`);
+}
+
+export async function recordReferralPayoutAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  const id = str(fd, "id");
+  const rupees = Number(str(fd, "amount"));
+  const method = str(fd, "method");
+  if (!id) return fail("Missing referral code.");
+  if (!Number.isInteger(rupees) || rupees <= 0) return fail("Enter the amount in whole rupees.");
+  if (method !== "cash" && method !== "upi") return fail("Choose cash or UPI.");
+  try {
+    const res = await recordReferralPayout(getDb(), {
+      adminId: admin.id,
+      referralCodeId: id,
+      amountPaise: rupees * 100,
+      method,
+      note: str(fd, "note"),
+    });
+    revalidatePath("/admin/referrals");
+    return ok(`Recorded ₹${rupees} (${method === "upi" ? "UPI" : "cash"}) for ${res.code}.`);
+  } catch (e) {
+    if (isAppError(e)) return fail(e.message);
+    throw e;
+  }
 }
 
 export async function setReferralActive(_prev: ActionResult, fd: FormData): Promise<ActionResult> {

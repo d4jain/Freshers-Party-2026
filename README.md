@@ -11,6 +11,13 @@ pay by UPI and upload proof, and get one QR pass per person once an organiser ve
 dashboard for bookings, exceptions, coupons, referrals, settings, CSV export and
 an audit trail; door staff get a camera + manual-code check-in page.
 
+**Refer Now:** every student gets a personal code (first 4 letters of their
+name + 4 digits, e.g. `RIYA4821`) to share on WhatsApp/Instagram. Friends who
+book with it and are checked in at the party count towards cashback — 5 → ₹100,
+10 → ₹200, 15 → ₹300, 30+ → ₹500 (highest level reached, not added up) — paid
+by organisers at the party and recorded in Admin → Referrals. Tiers live in
+`src/config/referrals.ts`.
+
 > Status: **not deployed.** Payments are manual UPI (no gateway). See “Missing launch inputs”.
 
 ---
@@ -108,6 +115,7 @@ Architecture and security model: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | `tests/unit` (26) | Pricing & coupons (paise, caps, expiry, min rules, no zero totals), validation (phone, email, quantities, acknowledgements, tampered fields ignored, referral vs coupon), signatures, QR tokens, cron auth | Unit |
 | `tests/integration/checkout` (14) | Idempotent duplicate clicks, supersede, price-change snapshot, sales window/group size/policy version/email verification, **concurrent last places**, hold expiry without double release, **final coupon redemption race**, per-user limits, referral attribution & self-referral | Real Postgres |
 | `tests/integration/review` (17) | Proof upload → in review (image re-encoded, places kept), organiser alert email, invalid UTR / non-image / oversize, cross-user upload blocked, **duplicate UTR refused** (allowed again after rejection), late proof only if places remain, approval issues passes **exactly once under concurrent approvals**, no approval without proof, rejection releases places + coupon, cancellation voids passes, unpaid holds expire, email outbox retry, UPI link/UTR helpers | Real Postgres |
+| `tests/unit/referrals` + `tests/integration/referrals` (3 + 6) | Code format (name prefix + 4 digits), one code per student under concurrent requests, uniqueness, self-referral blocked, only checked-in people from confirmed bookings count, highest-tier reward, top-ups, **concurrent payouts can't overpay**, 30+ top tier | Unit + real Postgres |
 | `tests/integration/checkin` (5) | QR/manual lookup, forged codes, **concurrent repeat check-in** (exactly one admit), void and demo passes | Real Postgres |
 | `tests/integration/auth-and-routes` (9) | Signup/login via Better Auth, duplicate email, invalid phone/referral, role not self-assignable, **expired reset token**, protected routes (401), CSRF (403), **cross-user booking access (404)**, forged callback rejected, staff route forbidden | Real Postgres + route handlers |
 | `tests/e2e` (Playwright, 10 specs × 2 viewports) | Landing facts & honest placeholders, no overflow (360/1440 and every signed-in page), keyboard FAQ, countdown, gallery failure fallback, venue search link, reduced motion, cursor glitter toggle, **full journey** (draft kept through signup → UPI payment page → proof upload → In review → organiser approves → passes → staff admit → “Already checked in”), admin access control | Browser, DEMO mode |

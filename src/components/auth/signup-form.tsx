@@ -14,10 +14,12 @@ export function SignupForm({
   next,
   whatsappUrl,
   requireVerification,
+  initialReferralCode,
 }: {
   next: string | null;
   whatsappUrl: string;
   requireVerification: boolean;
+  initialReferralCode?: string | null;
 }) {
   const [values, setValues] = useState({
     name: "",
@@ -25,7 +27,7 @@ export function SignupForm({
     email: "",
     password: "",
     confirmPassword: "",
-    referralCode: "",
+    referralCode: initialReferralCode ?? "",
     marketingOptIn: false,
   });
   const [errors, setErrors] = useState<Errors>({});

@@ -5,6 +5,7 @@ import { BookingFlow } from "@/components/booking/booking-flow";
 import { PageShell, PageTitle } from "@/components/site/page-shell";
 import { FormAlert } from "@/components/ui/field";
 import { getSessionUser } from "@/lib/auth/session";
+import { isValidCodeFormat, normalizeCode } from "@/lib/codes";
 import { getDb } from "@/lib/db";
 import { bookings, user as userTable } from "@/lib/db/schema";
 import { env } from "@/lib/env";
@@ -15,7 +16,10 @@ import { getPublicEvent } from "@/lib/public-settings";
 export const metadata: Metadata = { title: "Book your spot", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
-export default async function BookPage() {
+export default async function BookPage(props: PageProps<"/book">) {
+  const sp = await props.searchParams;
+  const ref = normalizeCode(typeof sp.ref === "string" ? sp.ref : null);
+  const initialReferralCode = ref && isValidCodeFormat(ref) ? ref : null;
   const event = await getPublicEvent();
   const s = event.settings;
   const session = await getSessionUser().catch(() => null);
@@ -101,6 +105,7 @@ export default async function BookPage() {
               sales={{ open: salesOpen, message: event.salesMessage, setupHint }}
               demo={event.demo}
               requireVerifiedEmail={e.REQUIRE_EMAIL_VERIFICATION}
+              initialReferralCode={initialReferralCode}
             />
           </div>
         </div>

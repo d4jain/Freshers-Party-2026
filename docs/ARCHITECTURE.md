@@ -58,13 +58,15 @@ tests/                    unit, integration (real Postgres), e2e (Playwright)
   `total ≥ 100 paise`, currency `INR`).
 - **Payment truth:** the organiser's approval after checking their UPI account; the
   proof (screenshot, UTR, amount) is stored in
-  `payment_attempts`.
+  `payment_proofs`.
 
 ## Data model (see `src/lib/db/schema.ts`)
 
 `user`, `session`, `account`, `verification`, `rate_limit` (Better Auth) ·
-`event_settings` · `referral_codes` · `coupons` · `bookings` · `booking_events`
-(state log) · `inventory_holds` · `coupon_reservations` · `payment_attempts` ·
+`event_settings` · `referral_codes` (organiser/campaign codes and one "Refer
+Now" code per student) · `referral_payouts` (cashback handed over at the party) ·
+`coupons` · `bookings` · `booking_events`
+(state log) · `inventory_holds` · `coupon_reservations` ·
 `payment_proofs` · `tickets` · `check_in_events` ·
 `email_outbox` · `audit_events` · `app_rate_limits`.
 

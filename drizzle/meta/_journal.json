@@ -15,6 +15,13 @@
       "when": 1790443635257,
       "tag": "0001_drop_privacy_text",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790502740956,
+      "tag": "0002_referral_rewards",
+      "breakpoints": true
     }
   ]
 }

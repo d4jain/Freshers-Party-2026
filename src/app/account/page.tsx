@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { ChevronRight, ScanLine, Shield } from "lucide-react";
+import { ChevronRight, Gift, ScanLine, Shield } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SignOutButton } from "@/components/account/sign-out-button";
@@ -8,6 +8,7 @@ import { ResendVerification } from "@/components/auth/password-forms";
 import { PageShell, PageTitle } from "@/components/site/page-shell";
 import { FormAlert } from "@/components/ui/field";
 import { WhatsAppCta } from "@/components/ui/whatsapp-cta";
+import { REFERRAL_TIERS } from "@/config/referrals";
 import { requireUserPage } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -60,7 +61,26 @@ export default async function AccountPage(props: PageProps<"/account">) {
         </div>
       )}
 
-      <WhatsAppCta href={event.whatsappUrl} className="mb-10" />
+      <WhatsAppCta href={event.whatsappUrl} className="mb-6" />
+
+      <Link
+        href="/account/refer"
+        className="card mb-10 flex items-center justify-between gap-4 p-5 transition-colors hover:border-gold/50"
+      >
+        <span className="flex items-center gap-4">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gold/40 text-gold">
+            <Gift className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span>
+            <span className="block font-display text-2xl text-ivory">Refer Now</span>
+            <span className="block text-sm text-mist">
+              Get your code, invite friends, earn up to {formatINR(REFERRAL_TIERS[REFERRAL_TIERS.length - 1]!.rewardPaise)}{" "}
+              cashback.
+            </span>
+          </span>
+        </span>
+        <ChevronRight className="h-5 w-5 shrink-0 text-gold" aria-hidden="true" />
+      </Link>
 
       <section aria-labelledby="bookings-title">
         <div className="mb-4 flex items-end justify-between gap-4">

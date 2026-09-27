@@ -220,7 +220,43 @@ export const referralCodes = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [check("referral_code_format", sql`${t.code} ~ '^[A-Z0-9-]{3,24}$'`)],
+  (t) => [
+    check("referral_code_format", sql`${t.code} ~ '^[A-Z0-9-]{3,24}$'`),
+    // "Refer Now": each student has at most one personal code.
+    uniqueIndex("referral_codes_one_per_user")
+      .on(t.ownerUserId)
+      .where(sql`owner_type = 'user'`),
+  ],
+);
+
+/* ------------------------------------------------------------------ */
+/* Referral reward payouts (paid by organisers at the party)            */
+/* ------------------------------------------------------------------ */
+
+export const payoutMethod = pgEnum("payout_method", ["cash", "upi"]);
+
+/** One row per cash/UPI handover. The reward already paid is the sum of these rows. */
+export const referralPayouts = pgTable(
+  "referral_payouts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referralCodeId: uuid("referral_code_id")
+      .notNull()
+      .references(() => referralCodes.id, { onDelete: "restrict" }),
+    amountPaise: integer("amount_paise").notNull(),
+    method: payoutMethod("method").notNull(),
+    /** Attendee count the payout was based on, for the record. */
+    attendedAtPayout: integer("attended_at_payout").notNull(),
+    note: text("note"),
+    paidBy: text("paid_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    paidAt: ts("paid_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("referral_payouts_code_idx").on(t.referralCodeId),
+    check("referral_payouts_amount_positive", sql`${t.amountPaise} > 0`),
+  ],
 );
 
 /* ------------------------------------------------------------------ */
@@ -608,6 +644,7 @@ export const schema = {
   rateLimit,
   eventSettings,
   referralCodes,
+  referralPayouts,
   coupons,
   bookings,
   bookingEvents,

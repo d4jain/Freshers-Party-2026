@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/#experience", label: "The Experience" },
   { href: "/#venue", label: "Venue" },
   { href: "/#faq", label: "FAQ" },
+  { href: "/account/refer", label: "Refer Now" },
 ];
 
 function AccountLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {

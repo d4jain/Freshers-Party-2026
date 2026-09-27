@@ -125,6 +125,7 @@ test.describe("layout on signed-in pages", () => {
     await setRole(email, "admin");
     for (const path of [
       "/account",
+      "/account/refer",
       "/book",
       "/admin",
       "/admin/bookings",

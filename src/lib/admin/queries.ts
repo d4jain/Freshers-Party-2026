@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, ne, or, sql, type SQL } from "drizzle-orm";
 import type { Queryable } from "@/lib/db";
 import { auditEvents, bookings, coupons, referralCodes } from "@/lib/db/schema";
 import { placesInUse } from "@/lib/settings";
@@ -181,7 +181,12 @@ export async function couponReport(db: Queryable) {
 }
 
 export async function referralReport(db: Queryable) {
-  const list = await db.select().from(referralCodes).orderBy(desc(referralCodes.createdAt));
+  // Organiser/campaign codes only; students' "Refer Now" codes have their own board (lib/referrals).
+  const list = await db
+    .select()
+    .from(referralCodes)
+    .where(ne(referralCodes.ownerType, "user"))
+    .orderBy(desc(referralCodes.createdAt));
   const usage = await db.execute<{
     id: string;
     signups: string;

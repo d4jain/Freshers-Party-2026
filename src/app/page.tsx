@@ -8,11 +8,13 @@ import { Hero } from "@/components/site/hero";
 import { Marquee } from "@/components/site/marquee";
 import { SiteNav } from "@/components/site/nav";
 import { ReachOut } from "@/components/site/reach-out";
+import { ReferNow } from "@/components/site/refer-now";
 import { Reveal } from "@/components/site/reveal";
 import { StickyBookingBar } from "@/components/site/sticky-cta";
 import { TicketCard } from "@/components/site/ticket";
 import { Venue } from "@/components/site/venue";
 import { EVENT_DAY_END_ISO, EVENT_DAY_START_ISO, EVENT_FACTS } from "@/config/event";
+import { REFERRAL_TIERS } from "@/config/referrals";
 import { eventTimingLabel, formatDateTimeIST, formatEventDate } from "@/lib/format";
 import { formatINR } from "@/lib/money";
 import { getPublicEvent, type PublicEvent } from "@/lib/public-settings";
@@ -89,6 +91,19 @@ function faqItems(event: PublicEvent): FaqItem[] {
         <p>
           Unlimited food and unlimited drinks, plus party, dance and games. Tap{" "}
           <Link href="#experience">Unlimited Food or Unlimited Drinks</Link> to see the menu. {s.drinksDetails}
+        </p>
+      ),
+    },
+    {
+      q: "How does Refer Now work?",
+      a: (
+        <p>
+          Get your code on the <Link href="/account/refer">Refer Now</Link> page and share it. Each friend who books with your
+          code and is checked in at the party counts:{" "}
+          {REFERRAL_TIERS.map(
+            (t, i) => `${t.min}${i === REFERRAL_TIERS.length - 1 ? "+" : ""} → ${formatINR(t.rewardPaise)}`,
+          ).join(", ")}{" "}
+          (you get the highest level you reach), paid by the organisers at the party in cash or UPI.
         </p>
       ),
     },
@@ -227,6 +242,12 @@ export default async function HomePage() {
               {event.salesMessage} Join the WhatsApp group to hear the moment bookings open.
             </p>
           )}
+        </Section>
+
+        <Section id="refer" labelledBy="refer-title" className="py-12 sm:py-16">
+          <Reveal>
+            <ReferNow />
+          </Reveal>
         </Section>
 
         <Section id="faq" labelledBy="faq-title" className="py-16 sm:py-24">

@@ -31,6 +31,8 @@ export type BookingFlowProps = {
   sales: { open: boolean; message: string | null; setupHint: string | null };
   demo: boolean;
   requireVerifiedEmail: boolean;
+  /** From a shared "Refer Now" link (/book?ref=CODE). */
+  initialReferralCode?: string | null;
 };
 
 type Draft = { total: number; girls: number; boys: number; couponCode: string; referralCode: string; resumeAtDetails?: boolean };
@@ -77,6 +79,7 @@ function BookingFlowInner({
   sales,
   demo,
   requireVerifiedEmail,
+  initialReferralCode,
   draft,
   persist,
 }: BookingFlowProps & { draft: Partial<Draft> | null; persist: boolean }) {
@@ -99,7 +102,8 @@ function BookingFlowInner({
   const [couponBreakdown, setCouponBreakdown] = useState<PriceBreakdown | null>(null);
   const [couponMsg, setCouponMsg] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
-  const [referralCode, setReferralCode] = useState(draft?.referralCode ?? "");
+  // A code from a freshly opened share link wins over one saved in the draft.
+  const [referralCode, setReferralCode] = useState(initialReferralCode || draft?.referralCode || "");
   const [eligibilityAck, setEligibilityAck] = useState(false);
   const [termsAck, setTermsAck] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
